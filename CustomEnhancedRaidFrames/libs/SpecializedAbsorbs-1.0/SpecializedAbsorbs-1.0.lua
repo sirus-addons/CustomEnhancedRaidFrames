@@ -1,37 +1,25 @@
 ------------------------------------------------------------------------
--- SpecializedAbsorbs
+-- SpecializedAbsorbs -fixes fxpw for sirus
 ------------------------------------------------------------------------
-
-local MAJOR, MINOR = "SpecializedAbsorbs-1.0", 5
+local _,ns = ...
+local Compat = ns.Compat
+local MAJOR, MINOR = "SpecializedAbsorbs-1.0", 7
 local lib, oldminor = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then return end
+local Core
 
 local error = error
-local pairs = pairs
-local select = select
-local getmetatable = getmetatable
-local setmetatable = setmetatable
-local floor, max, min = math.floor, math.max, math.min
+local pairs, select = pairs, select
+local min, max, floor = math.min, math.max, math.floor
+local setmetatable, getmetatable = setmetatable, getmetatable
 local tinsert, tremove, tsort = table.insert, table.remove, table.sort
-
-local GetNumPartyMembers = GetNumPartyMembers
-local GetNumRaidMembers = GetNumRaidMembers
-local GetTalentInfo = GetTalentInfo
-local UnitAttackPower = UnitAttackPower
-local UnitBuff = UnitBuff
-local UnitClass = UnitClass
-local UnitExists = UnitExists
-local UnitFactionGroup = UnitFactionGroup
-local UnitGUID = UnitGUID
-local UnitHealth = UnitHealth
-local UnitHealthMax = UnitHealthMax
-local UnitInBattleground = UnitInBattleground
-local UnitLevel = UnitLevel
+local UnitBuff, UnitHealthMax, UnitAttackPower, UnitHealth = UnitBuff, UnitHealthMax, UnitAttackPower, UnitHealth
+local UnitExists, UnitGUID, UnitClass, UnitLevel = UnitExists, UnitGUID, UnitClass, UnitLevel
+local UnitFactionGroup, UnitInBattleground, GetTalentInfo = UnitFactionGroup, UnitInBattleground, GetTalentInfo
+local GetNumRaidMembers, GetNumPartyMembers = GetNumRaidMembers, GetNumPartyMembers
 
 lib.CheckFlags = lib.CheckFlags or true
 lib.NoErrors = lib.NoErrors or true
-
-local Core
 
 ---------------------
 -- Install/Upgrade --
@@ -169,8 +157,8 @@ local COMM_SCALING = "SpecializedAbsorbs_Scaling"
 -- for players using AbsorbsMonitor-1.0
 local COMM_UNITSTATS_ALT = "Absorbs_UnitStats"
 local COMM_SCALING_ALT = "Absorbs_Scaling"
-
-local deathknight_CLEUFrame = CreateFrame("Frame")
+-- for t5 dk
+local TankCLEUFrame = CreateFrame("Frame")
 local PlayerGUID
 ----------------------
 -- Helper functions --
@@ -182,6 +170,7 @@ local function ClearCommStatsCooldown()
 end
 
 local CommScalingCooldown = false
+
 local function ClearCommScalingCooldown()
 	CommScalingCooldown = false
 end
@@ -354,6 +343,7 @@ local function GetUnitId(guid, name)
 	if UnitExists("playerpet") and UnitGUID("playerpet") == guid then
 		return "playerpet"
 	end
+	return nil
 end
 
 -- Tries to get a working unitId and calls the given UnitXXX() function
@@ -465,7 +455,7 @@ function Core.Enable()
 	if not lib.Passive then
 		Core:SetActive()
 	end
-	deathknight_CLEUFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+	TankCLEUFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
 	PlayerGUID = UnitGUID("player")
 	lib.Enabled = true
 end
@@ -474,7 +464,7 @@ end
 -- have accumulated. It will be called in case this library version gets
 -- replaced by a new one
 function Core.Disable()
-	for guid, effects in pairs(activeEffectsBySpell) do
+	for guid, _ in pairs(activeEffectsBySpell) do
 		callbacks:Fire("UnitCleared", guid)
 	end
 
@@ -497,7 +487,7 @@ function Core.Disable()
 	Core:CancelAllTimers()
 
 	lib.Enabled = false
-	deathknight_CLEUFrame:UnregisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+	TankCLEUFrame:UnregisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
 	collectgarbage("collect")
 end
 
@@ -529,11 +519,14 @@ function Core.ApplySingularEffect(timestamp, srcGUID, srcName, dstGUID, dstName,
 	local effectInfo = Effects[spellid]
 	local effectEntry
 
+	-- if not destEffects then return end
+
 	local value, quality = effectInfo[3](srcGUID, srcName, dstGUID, dstName, spellid, destEffects)
 	if value == nil then return end
 	if t5TanksSpellId[spellid] and value > 50000 then
 		value = 50000
 	end
+
 	-- No entry yet for this unit
 	if not destEffects then
 		-- Not this specific effect yet
@@ -853,11 +846,11 @@ function Core.AddCombatTrigger(target, event, func)
 				return
 			end
 
-			funcList = {oldTrigger, func}
-			eventTriggers[listIndex] = funcList
+			funcList = {oldTrigger, func};
+			eventTriggers[listIndex] = funcList;
 
 			local handler = function(...)
-				for k, v in pairs(funcList) do
+				for _, v in pairs(funcList) do
 					v(...)
 				end
 			end
@@ -885,7 +878,7 @@ function Core.RemoveCombatTrigger(target, event, func)
 			local old_funcList = DeepTableCopy(funcList)
 			wipe(funcList)
 
-			for k, v in pairs(old_funcList) do
+			for _, v in pairs(old_funcList) do
 				if v ~= func then
 					tinsert(funcList, v)
 				end
@@ -902,9 +895,11 @@ function Core.SendUnitStats()
 		local curAP, curSP = UnitStatsTable[playerid][2], UnitStatsTable[playerid][3]
 		local dodge = UnitStatsTable[playerid][5]
 		local parry = UnitStatsTable[playerid][6]
+		local armor = UnitStatsTable[playerid][7]
+		local block = UnitStatsTable[playerid][8]
 		if (curAP ~= lastAP) or (curSP ~= lastSP) then
-			Core:SendCommMessage(COMM_UNITSTATS, Core:Serialize(playerid, playerclass, curAP, curSP, dodge, parry), curChatChannel)
-			Core:SendCommMessage(COMM_UNITSTATS_ALT, Core:Serialize(playerid, playerclass, curAP, curSP, dodge, parry), curChatChannel)
+			Core:SendCommMessage(COMM_UNITSTATS, Core:Serialize(playerid, playerclass, curAP, curSP, dodge, parry, armor, block), curChatChannel)
+			Core:SendCommMessage(COMM_UNITSTATS_ALT, Core:Serialize(playerid, playerclass, curAP, curSP, dodge, parry, armor, block), curChatChannel)
 
 			lastAP, lastSP = curAP, curSP
 			CommStatsCooldown = true
@@ -1017,7 +1012,7 @@ local environmentSchools = {
 	LAVA = SCHOOL_MASK_FIRE,
 	SLIME = SCHOOL_MASK_NATURE
 }
-
+local t6PalTable ={}
 function Events.COMBAT_LOG_EVENT_UNFILTERED(timestamp, etype, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, ...)
 	if lib.CheckFlags and not CheckFlags(srcFlags, dstFlags) then return end
 
@@ -1054,9 +1049,11 @@ function Events.COMBAT_LOG_EVENT_UNFILTERED(timestamp, etype, srcGUID, srcName, 
 			CombatTriggersOnHealCrit[srcGUID](srcGUID, srcName, dstGUID, dstName, spellid, amount, overheal)
 		end
 	elseif etype == "SPELL_AURA_APPLIED" or etype == "SPELL_AURA_REFRESH" then
+
 		local spellid, _, spellschool = ...
 		if Effects[spellid] then
 			if Effects[spellid][1] > 0 then
+				-- print(...,"-----------------1048")
 				ApplySingularEffect(timestamp, srcGUID, srcName, dstGUID, dstName, spellid, spellschool)
 			else
 				ApplyAreaEffect(timestamp, srcGUID, srcName, dstGUID, dstName, spellid, spellschool)
@@ -1068,12 +1065,18 @@ function Events.COMBAT_LOG_EVENT_UNFILTERED(timestamp, etype, srcGUID, srcName, 
 		if absorbHealSpells[spellid] then
 			Core.GUIDtoAbsorbHealSpells[dstGUID] = absorbHealSpells[spellid]
 		end
+		if spellid == 319544 then
+			t6PalTable[dstGUID] = true
+		end
 	elseif etype == "SPELL_AURA_REMOVED" then
 		local spellid, _, spellschool = ...
 		if Effects[spellid] then
 			if activeEffectsBySpell[dstGUID] and activeEffectsBySpell[dstGUID][spellid] then
 				RemoveActiveEffect(dstGUID, spellid)
 			end
+		end
+		if spellid == 319544 then
+			t6PalTable[dstGUID] = false
 		end
 		if CombatTriggersOnAuraRemoved[spellid] then
 			CombatTriggersOnAuraRemoved[spellid](srcGUID, srcName, dstGUID, dstName, spellid, spellschool)
@@ -1135,6 +1138,10 @@ function Events.STATS_CHANGED()
 	UnitStatsTable[playerid][5] = GetCombatRating(3)
 	--5 parry for t5 tanks
 	UnitStatsTable[playerid][6] = GetCombatRating(4)
+	--6 armor for t6 fdk
+	UnitStatsTable[playerid][7] = select(2,UnitArmor("player"))
+	--7 block for t6 ppal
+	UnitStatsTable[playerid][8] = GetShieldBlock()
 	if curChatChannel then
 		Core:ScheduleUniqueTimer("comm_stats", Core.SendUnitStats, CommStatsCooldown and 15 or 5)
 		Core:ScheduleUniqueTimer("comm_scaling", Core.SendScaling, CommScalingCooldown and 30 or 5)
@@ -1144,18 +1151,20 @@ end
 function Events.OnUnitStatsReceived(prefix, text, distribution, target)
 	if not text then return end
 
-	local success, guid, class, ap, sp, dodge, parry = Core:Deserialize(text)
+	local success, guid, class, ap, sp, dodge, parry, armor, block = Core:Deserialize(text)
 	if not (success and guid and class and ap and sp) then return end
 	if guid == playerid then return end
 
 	if not UnitStatsTable[guid] then
-		UnitStatsTable[guid] = {class, ap, sp, 1.0, dodge, parry}
+		UnitStatsTable[guid] = {class, ap, sp, 1.0, dodge, parry, armor, block}
 	else
 		UnitStatsTable[guid][2] = ap
 		UnitStatsTable[guid][3] = sp
 		UnitStatsTable[guid][4] = 1.0
 		UnitStatsTable[guid][5] = dodge
 		UnitStatsTable[guid][6] = parry
+		UnitStatsTable[guid][7] = armor
+		UnitStatsTable[guid][8] = block
 	end
 end
 
@@ -1277,7 +1286,7 @@ function lib.RegisterAreaCallbacks(self, funcCreated, funcUpdated, funcCleared)
 end
 
 function lib.GetLowValueTolerance()
-	return _G["LOW_VALUE_TOLERANE"]
+	return LOW_VALUE_TOLERANE
 end
 
 function lib.SetLowValueTolerance(value)
@@ -1303,7 +1312,7 @@ function lib.PrintProfiling()
 		["ApplySingularEffect"] = ApplySingularEffect,
 		["HitUnit"] = HitUnit,
 		["RemoveActiveEffect"] = RemoveActiveEffect,
-		["OnCombatLogEvent"] = Events.COMBAT_LOG_EVENT_UNFILTERED,
+		["OnCombatLogEvent"] = COMBAT_LOG_EVENT_UNFILTERED,
 		["SortEffects"] = SortEffects
 	}
 
@@ -1340,7 +1349,7 @@ end
 function lib.UnitStats(guid, missingQuality)
 	local guidStats = UnitStatsTable and UnitStatsTable[guid]
 	if guidStats then
-		return guidStats[2], guidStats[3], guidStats[4]
+		return guidStats[2], guidStats[3], guidStats[4], guidStats[5], guidStats[6], guidStats[7]
 	end
 	return 0, 0, missingQuality
 end
@@ -1612,24 +1621,26 @@ local function deathknight_ScanEquipment()
 		n = n + 1
 	end
 
---[[
-	if n >= 4 then
-		privateScaling["4dktRaid5"] = n
-		privateScaling["2dktRaid5"] = 1
-	elseif n >= 2 then
-		privateScaling["4dktRaid5"] = 2
-		privateScaling["2dktRaid5"] = 1
-	else
-		privateScaling["4dktRaid5"] = 0
-		privateScaling["2dktRaid5"] = 0
-	end
---]]
 	privateScaling["4dktRaid5"] = n
 end
+
+-- local csaa = {
+-- 	["SPELL_AURA_APPLIED"] = true,
+-- }
+-- local csarf = {
+-- 	["SPELL_AURA_REFRESH"] = true,
+-- }
 
 local csarm = {
 	["SPELL_AURA_REMOVED"] = true
 }
+-- local cspm = {
+-- 	["SWING_MISSED"] = true,
+-- }
+
+-- local cswm = {
+-- 	["SPELL_MISSED"] = true,
+-- }
 local csd = {
 	["SPELL_DAMAGE"] = true
 }
@@ -1645,21 +1656,16 @@ local function deathknight_OnEquipmentChanged()
 	deathknight_OnEquipmentChangedDelayed()
 end
 
-
 local lastDkAbsorbTable = {}
--- lastDkAbsorbTable 
+-- lastDkAbsorbTable
 local lastPalAbsorbTable = {}
 
 -- lastPalAbsorbTable[guid][1] = last update
 -- lastPalAbsorbTable[guid][2] = count
+local palPokrovBuff = {}
 local function Tanks_CLEU(self,...)
 	-- local whoGUID = ...
-	-- for k,v in pairs({...}) do
-	-- 	print(k,v)
-	-- end
 	-- time event whoguid whoname whoflag targetguid targetname targetflag spellid spellname
-	-- if privateScaling["2dktRaid5"] >= 1 then
-	-- print(1633)
 	local _, time2, subevent3, whoguid4, _, _, _, _, _,spellid10, spellname11, _, spelldmg13 = ...
 
 	if csd[subevent3] and spellname11 == "Ледяной удар" then
@@ -1668,36 +1674,28 @@ local function Tanks_CLEU(self,...)
 		------ 800 average for 270 ilvl
 		local parry = (UnitStatsTable[whoguid4] and UnitStatsTable[whoguid4][6] or 800) * 0.0237037037
 
-		-- local dodge,parry = UnitStatsTable[playerID][5], UnitStatsTable[playerID][6]
 		if (whoguid4 == PlayerGUID and privateScaling["4dktRaid5"] >= 2) or true then
 			dodge = GetCombatRating(3) * 0.0237735849
 			parry = GetCombatRating(4) * 0.0237037037
 		end
 		local absorb = ((spelldmg13*2)*((150+dodge*3+parry*3)/100))
-		-- lastDKAbsorb = lastDKAbsorb + absorb
 		if absorb > 50000 then
 			absorb = 50000
 		end
-		-- print(absorb)
 		lastDkAbsorbTable[whoguid4] = (lastDkAbsorbTable[whoguid4] or 0) + absorb
 		if lastDkAbsorbTable[whoguid4] > 50000 then
 			lastDkAbsorbTable[whoguid4] = 50000
 		end
-		-- print(lastDKAbsorb)
 	elseif csd[subevent3] and spellid10 == 307917 then
-		-- print(1712)
 		if not lastPalAbsorbTable[whoguid4] then
-			lastPalAbsorbTable[whoguid4] = {}
+			lastPalAbsorbTable[whoguid4] = lastPalAbsorbTable[whoguid4] or {}
 			lastPalAbsorbTable[whoguid4][1] = 0
 		end
-		-- print(1716)
-		if time2 - lastPalAbsorbTable[whoguid4][1] <= 2 then
+		if time2 and lastPalAbsorbTable[whoguid4] and lastPalAbsorbTable[whoguid4][1] and (time2 - lastPalAbsorbTable[whoguid4][1] <= 2) then
             lastPalAbsorbTable[whoguid4][2] = lastPalAbsorbTable[whoguid4][2] + spelldmg13
             if lastPalAbsorbTable[whoguid4][2] > 50000 then
                 lastPalAbsorbTable[whoguid4][2] = 50000
             end
-			-- print(lastPalAbsorbTable[whoguid4][2])
-			-- print(1719)
         else
 			lastPalAbsorbTable[whoguid4][1] = time2
             lastPalAbsorbTable[whoguid4][2] = 0
@@ -1705,23 +1703,21 @@ local function Tanks_CLEU(self,...)
             if lastPalAbsorbTable[whoguid4][2] > 50000 then
                 lastPalAbsorbTable[whoguid4][2] = 50000
             end
-			-- print(lastPalAbsorbTable[whoguid4][2])
-			-- print(1728)
         end
 	elseif csarm[subevent3] and spellid10 == 308125 then
 		lastDkAbsorbTable[whoguid4] = 0
 	elseif sh[subevent3] and (spellid10 == 48782) then -- ttg 16% свет небес
 		local absorb = spelldmg13 * 0.16
-		lastPalAbsorbTable[whoguid4] = absorb
+		palPokrovBuff[whoguid4] = absorb
 	elseif sh[subevent3] and (spellid10 == 48785) then -- ttg 8% вспышка света
 		local absorb = spelldmg13 * 0.08
-		lastPalAbsorbTable[whoguid4] = absorb
+		palPokrovBuff[whoguid4] = absorb
 	end
 	-- end
 
 end
 
-deathknight_CLEUFrame:SetScript("OnEvent",Tanks_CLEU)
+TankCLEUFrame:SetScript("OnEvent",Tanks_CLEU)
 
 
 local function deathknight_T52BloodTankOnCreate(...)
@@ -1732,18 +1728,19 @@ local function deathknight_T52BloodTankOnCreate(...)
 	end
 	return 0, 1
 end
-
+local function deathknight_T62FrostTankOnCreate(...)
+	local whog = select(3,...)
+	local armor = 0
+	if whog == PlayerGUID then
+		armor = select(2,UnitArmor("player"))
+	else
+		armor = UnitStatsTable[whog] and UnitStatsTable[whog][7] or 0
+	end
+	return armor,1.0
+end
 
 local function deathknight_T52FrostTankOnCreate(...)
-	-- print(...)
-	-- print(1688)
 	local whoGUID = ...
-	-- local AbsorbForReturn = lastDkAbsorbTable[whoGUID];
-	-- print(AbsorbForReturn)
-	-- print(1672)
-	-- lastDkAbsorbTable[whoGUID] = 0;
-	-- print(1674)
-	-- print(AbsorbForReturn);
 	return lastDkAbsorbTable[whoGUID], 1.0;
 end
 
@@ -1753,13 +1750,13 @@ function OnEnableClass.DEATHKNIGHT()
 	-- Events.COMBAT_LOG_EVENT_UNFILTERED = Tanks_CLEU;
 	deathknight_OnTalentUpdate();
 	deathknight_OnEquipmentChanged();
-	-- print("da")
 end
 
 --------------------
 -- Effects: Druid --
 --------------------
 local druidAbsorb = 0
+local druidSpellAbsorb = 0
 local function druid_SavageDefense_Create(srcGUID, srcName, dstGUID, dstName, spellid, destEffects)
 	local ap, _, quality = UnitStats(srcGUID, 0.0);
 	if privateScaling["4dtRaid5"] == 1 then
@@ -1776,14 +1773,31 @@ end
 local function druid_SavageDefense_Hit(effectEntry, absorbedRemaining, overkill, spellschool)
 	-- TODO: what happens to mixed school attacks?
 	druidAbsorb = 0
-	-- effectEntry[3] > 
-	-- print()
+	-- effectEntry[3] >
 	if spellschool == SCHOOL_MASK_PHYSICAL then
 		return min(effectEntry[3], absorbedRemaining), false
 	end
 	return 0, true
 end
-
+local function druid_t6_SpellAbsorb_Create(srcGUID, srcName, dstGUID, dstName, spellid, destEffects)
+	local ap, _, quality = UnitStats(srcGUID, 0.0);
+	-- if privateScaling["4dtRaid5"] == 1 then
+		druidSpellAbsorb = druidSpellAbsorb + floor(ap * 0.25)
+		if druidSpellAbsorb > 50000 then
+			druidSpellAbsorb = 50000
+		end
+		return druidSpellAbsorb, quality;
+	-- else
+		-- return floor(ap * 0.25), quality;
+	-- end
+end
+local function druid_t6_SpellHit(effectEntry, absorbedRemaining, overkill, spellschool)
+		druidSpellAbsorb = 0
+	if spellschool ~= SCHOOL_MASK_PHYSICAL then
+		return min(effectEntry[3], absorbedRemaining), false
+	end
+	return 0, true
+end
 
 local function druid_ScanEquipment()
 	local n = 0
@@ -1808,6 +1822,7 @@ local function druid_ScanEquipment()
 	else
 		privateScaling["4dtRaid5"] = 0
 	end
+
 end
 
 local function druid_OnEquipmentChangedDelayed()
@@ -1817,8 +1832,9 @@ end
 
 local function druid_OnEquipmentChanged()
 	-- local function priest_OnEquipmentChanged()
-		Core:ScheduleUniqueTimer("druid_equip", druid_OnEquipmentChangedDelayed, 0.7)
+	Core:ScheduleUniqueTimer("druid_equip", druid_OnEquipmentChangedDelayed, 0.7)
 	-- end
+	druid_OnEquipmentChangedDelayed()
 end
 function OnEnableClass.DRUID()
 	Events.PLAYER_EQUIPMENT_CHANGED = druid_OnEquipmentChanged
@@ -1922,16 +1938,25 @@ end
 
 -- Public Scaling: { [DivineGuardian] }
 local paladin_defaultScaling = {1.0}
-local function paladin_T5OTankOnCreate(...)
-	local whoguid = ...
-	local absorb = whoguid and lastPalAbsorbTable[whoguid] and lastPalAbsorbTable[whoguid][2] or 0
+local function paladin_T5TankOnCreate(srcGUID, srcName, dstGUID, dstName, spellid, destEffects)
+	-- local whoguid = ...
+	local absorb = srcGUID and lastPalAbsorbTable[srcGUID] and lastPalAbsorbTable[srcGUID][2] or 0
 	return absorb, 1.0
 end
 
+
+-- t6PalTable = {
+-- 	[guid]= bool
+-- }
+local t6PalValue = 0
 -- The base value is always 500
 local function paladin_SacredShield_Create(srcGUID, srcName, dstGUID, dstName, spellid, destEffects)
 	local _, sp, quality1, sourceScaling, quality2 = UnitStatsAndScaling(srcGUID, 0.1, paladin_defaultScaling, 0.2)
-	return floor((500 + (sp * 0.75)) * (sourceScaling[1] or paladin_defaultScaling[1]) * ZONE_MODIFIER), min(quality1, quality2)
+	t6PalValue = 0
+	if t6PalTable[dstGUID] and srcGUID == dstGUID then
+		t6PalValue = UnitStatsTable and UnitStatsTable[dstGUID] and UnitStatsTable[dstGUID][8] or 0
+	end
+	return floor((500 + t6PalValue + (sp * 0.75)) * (sourceScaling[1] or paladin_defaultScaling[1]) * ZONE_MODIFIER), min(quality1, quality2)
 end
 
 local function paladin_OnTalentUpdate()
@@ -1943,20 +1968,20 @@ local function paladin_OnTalentUpdate()
 	playerScaling[1] = 1 + (t * 0.1)
 	lib.ScheduleScalingBroadcast()
 end
-
+local absorbPalPokrov = 0
 local function paladin_TTG_Absorb284(srcGUID, srcName, dstGUID, dstName, spellid, destEffects)
 
-	local absorb
+	absorbPalPokrov = 0
 	if spellid == 319738 then --4
-		absorb = (lastPalAbsorbTable[srcGUID] >= 1940 and 1940) or lastPalAbsorbTable[srcGUID]
+		absorbPalPokrov = (palPokrovBuff[srcGUID] >= 1940 and 1940) or palPokrovBuff[srcGUID]
 	elseif spellid == 319996 then --3
-		absorb = (lastPalAbsorbTable[srcGUID] >= 1140 and 1140) or lastPalAbsorbTable[srcGUID]
+		absorbPalPokrov = (palPokrovBuff[srcGUID] >= 1140 and 1140) or palPokrovBuff[srcGUID]
 	elseif spellid == 320110 then --2
-		absorb = (lastPalAbsorbTable[srcGUID] >= 960 and 960) or lastPalAbsorbTable[srcGUID]
+		absorbPalPokrov = (palPokrovBuff[srcGUID] >= 960 and 960) or palPokrovBuff[srcGUID]
 	elseif spellid == 320221 then --1
-		absorb = (lastPalAbsorbTable[srcGUID] >= 480 and 480) or lastPalAbsorbTable[srcGUID]
+		absorbPalPokrov = (palPokrovBuff[srcGUID] >= 480 and 480) or palPokrovBuff[srcGUID]
 	end
-	return absorb,1.0
+	return absorbPalPokrov,1.0
 end
 
 function OnEnableClass.PALADIN()
@@ -2073,7 +2098,7 @@ local function priest_ApplyScaling(guid, level, baseFactor, spFactor, daFactor)
 
 	local rankValue, rankSP
 
-	for k, v in pairs(priest_PWS_Ranks) do
+	for _, v in pairs(priest_PWS_Ranks) do
 		if v[2] <= level then
 			if level == 80 then
 				rankValue = v[3] + v[4]
@@ -2441,6 +2466,7 @@ Core.Effects = {
 	[52286] = {1.0, nil, function() return 0, 0.0 end, deathknight_WoN_Hit3}, -- Will of the Necropolis (Rank 3)
 
 	[62606] = {1.1, 10, druid_SavageDefense_Create, druid_SavageDefense_Hit}, -- Savage Defense
+	[319521] = {1.0, 10, druid_t6_SpellAbsorb_Create, druid_t6_SpellHit}, -- t6 absorb feral
 	[543] = mage_FireWard_Entry, -- Fire Ward (rank 1)
 	[8457] = mage_FireWard_Entry, -- Fire Ward (rank 2)
 	[8458] = mage_FireWard_Entry, -- Fire Ward (rank 3)
@@ -2579,12 +2605,13 @@ Core.Effects = {
 	[308143] = priest_PWS_Entry, -- Power Word: Shield (rank 15)
 
 	[308125] = {1.0, 10, deathknight_T52FrostTankOnCreate, generic_Hit}, --t5 fdk tank
+	[319552] = {1.0, 2, deathknight_T62FrostTankOnCreate, generic_Hit}, --t6 fdk tank
 
 	[308136] = {1.0, 20, deathknight_T52BloodTankOnCreate, generic_Hit}, --t5 bdk tank
 
 	[310210] = {1.0, 2, function() return 50000, 1.0 end, generic_Hit}, --t5 warrior
 
-	[307921]= {1.0, 10, paladin_T5OTankOnCreate, generic_Hit}, -- t5 paladin
+	[307921]= {1.0, 10, paladin_T5TankOnCreate, generic_Hit}, -- t5 paladin
 	--items
 	[319189] = {1.0, 4, function() return 18000, 1.0 end, generic_Hit}, --303 запястья
 
@@ -2592,10 +2619,10 @@ Core.Effects = {
 	[315529] = {1.0, 10, function() return 3660, 1.0 end, generic_Hit}, -- расколотое солнце
 
 	[317911] = {1.0, 10, function() return 722, 1.0 end, generic_Hit}, -- духовный барьер
-	[319738] = {1.0, 6, paladin_TTG_Absorb284, generic_Hit}, -- чарка ттг 4
-	[319996] = {1.0, 6, paladin_TTG_Absorb284, generic_Hit}, -- чарка ттг 3
-	[320110] = {1.0, 6, paladin_TTG_Absorb284, generic_Hit}, -- чарка ттг 2
-	[320221] = {1.0, 6, paladin_TTG_Absorb284, generic_Hit}, -- чарка ттг 1
+	[319738] = {1.0, 6, paladin_TTG_Absorb284, generic_Hit}, -- enchant ttg 4
+	[319996] = {1.0, 6, paladin_TTG_Absorb284, generic_Hit}, -- enchant ttg 3
+	[320110] = {1.0, 6, paladin_TTG_Absorb284, generic_Hit}, -- enchant ttg 2
+	[320221] = {1.0, 6, paladin_TTG_Absorb284, generic_Hit}, -- enchant ttg 1
 
 }
 
