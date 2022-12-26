@@ -1,0 +1,20 @@
+## Interface: 30300
+## Title: Custom Enhanced Raid Frames
+## Notes: |@Version: 1@|Extended Standart Raid\Party Frames
+## Version: 1.0
+## SavedVariables: ERFDB
+## SavedVariablesPerCharacter: ERFCharDB
+
+libs\libs.xml
+locales\locales.xml
+
+init.lua
+utils.lua
+settings.lua
+
+native\native.xml
+modules\modules.xml
+
+virtualFrames.lua
+
+options\options.xml

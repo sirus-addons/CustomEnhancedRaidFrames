@@ -1,0 +1,28 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.blizzard.com/wow/ui/
+..\..\..\Interface\FrameXML\UI.xsd">
+	<Script file="HealPrediction.lua"/>
+
+	<Frame name="ERF_CompactUnitFrameOverlayTemplate" setAllPoints="true" virtual="true">
+		<Layers>
+			<Layer level="BACKGROUND">
+				<Texture name="$parentMyHealPrediction" parentKey="myHealPrediction"/>
+				<Texture name="$parentOtherHealPrediction" parentKey="otherHealPrediction"/>
+				<Texture name="$parentTotalAbsorb" parentKey="totalAbsorb"/>
+			</Layer>
+			<Layer level="BORDER">
+				<Texture name="$parentTotalAbsorbOverlay" parentKey="totalAbsorbOverlay"/>
+			</Layer>
+			<Layer level="ARTWORK">
+				<Texture name="$parentMyHealAbsorb" parentKey="myHealAbsorb"/>
+				<Texture name="$parentMyHealAbsorbLeftShadow" parentKey="myHealAbsorbLeftShadow" file="Interface\RaidFrame\Absorb-Edge"/>
+				<Texture name="$parentMyHealAbsorbRightShadow" parentKey="myHealAbsorbRightShadow" file="Interface\RaidFrame\Absorb-Edge">
+					<TexCoords left="1" right="0" top="0" bottom="1"/>
+				</Texture>
+			</Layer>
+			<Layer level="OVERLAY">
+				<Texture name="$parentOverAbsorbGlow" parentKey="overAbsorbGlow"/>
+				<Texture name="$parentOverHealAbsorbGlow" parentKey="overHealAbsorbGlow"/>
+			</Layer>
+		</Layers>
+	</Frame>
+</Ui>

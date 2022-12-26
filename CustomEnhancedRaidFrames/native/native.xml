@@ -1,0 +1,18 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/">
+	<Script file="core.lua"/>
+
+	<Script file="healthBar.lua"/>
+	<Script file="powerBar.lua"/>
+
+	<Script file="name.lua"/>
+	<Script file="statusText.lua"/>
+
+	<Script file="auras.lua"/>
+
+	<Script file="readyCheck.lua"/>
+	<Script file="centerStatusIcon.lua"/>
+
+	<Script file="raidTargetIcon.lua"/>
+	<Script file="roleIcon.lua"/>
+	<Script file="roleGroupIcon.lua"/>
+</Ui>
