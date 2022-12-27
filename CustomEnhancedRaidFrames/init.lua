@@ -129,7 +129,7 @@ function ADDON:SetInternalVariables()
 
 	self.Masque = Masque and {} or nil
 
-	if self.Masque and self.db.profile.Masque then
+	if self.Masque then
 		self.Masque.buffFrames = Masque:Group(ADDON.TITLE, "Buff Auras")
 		self.Masque.debuffFrames = Masque:Group(ADDON.TITLE, "Debuff Auras")
 
@@ -266,7 +266,7 @@ function ADDON:CompactUnitFrameProfiles_ApplyProfile(profile)
 		self.SyncProfiles(profile)
 	end
 
-	if self.Masque and self.db.profile.Masque then
+	if self.Masque then
 		self.Masque.buffFrames = self.Masque.buffFrames or Masque:Group(ADDON.TITLE, "Buff Auras")
 		self.Masque.debuffFrames = self.Masque.debuffFrames or Masque:Group(ADDON.TITLE, "Debuff Auras")
 

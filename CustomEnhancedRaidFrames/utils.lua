@@ -234,6 +234,7 @@ function ADDON.StopGlow(frame, db, key, gType)
 end
 
 function ADDON.MasqueSupport(frame)
+	if not ADDON.Masque then return end
 	local enabled = ADDON.db.profile.Masque
 
 	for _, typedframe in ipairs(frame.buffFrames) do
