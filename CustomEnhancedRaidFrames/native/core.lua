@@ -38,7 +38,7 @@ function ADDON:CompactRaidFrameContainer_LayoutFrames()
 end
 
 local originalTitleHeight = {}
-function ADDON:LayoutGroup(frame, groupType)
+function ADDON:LayoutGroup(frame, groupType, isInCombatLockDown)
 	if self.db.profile[groupType].frames.hideGroupTitles then
 		if not originalTitleHeight[frame] then
 			originalTitleHeight[frame] = frame.title:GetHeight()
@@ -53,7 +53,9 @@ function ADDON:LayoutGroup(frame, groupType)
 		frame.title:Show()
 	end
 
-	CompactRaidGroup_UpdateLayout(frame)
+	if not isInCombatLockDown then
+		CompactRaidGroup_UpdateLayout(frame)
+	end
 end
 
 function ADDON:LayoutFrame(frame, groupType, isInCombatLockDown)
