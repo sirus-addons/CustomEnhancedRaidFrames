@@ -516,14 +516,14 @@ do
 		end
 	end
 
-	local function FrameResize(this)
+	local function FrameResize(this, width, height)
 		local self = this.obj
 		if this:GetWidth() and this:GetHeight() then
 			if self.OnWidthSet then
-				self:OnWidthSet(this:GetWidth())
+				self:OnWidthSet(width or this:GetWidth())
 			end
 			if self.OnHeightSet then
-				self:OnHeightSet(this:GetHeight())
+				self:OnHeightSet(height or this:GetHeight())
 			end
 		end
 	end
