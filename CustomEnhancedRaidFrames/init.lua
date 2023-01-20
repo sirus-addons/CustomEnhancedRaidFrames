@@ -7,6 +7,7 @@ _G["ERF"] = ADDON
 local L = LibStub("AceLocale-3.0"):GetLocale(ADDON_NAME)
 
 local ipairs = ipairs
+local next = next
 local pairs = pairs
 local print = print
 local strconcat = strconcat
@@ -15,8 +16,10 @@ local twipe = table.wipe
 local C_Timer = C_Timer
 local CopyTable = CopyTable
 local GetActiveRaidProfile = GetActiveRaidProfile
+local GetFramerate = GetFramerate
 local GetRaidProfileFlattenedOptions = GetRaidProfileFlattenedOptions
 local InCombatLockdown = InCombatLockdown
+local debugprofilestop = debugprofilestop
 
 -- GLOBALS: CompactRaidFrameContainer, CompactRaidFrameManager, InterfaceOptionsFrame_OpenToCategory, LibStub, ERFCharDB
 
@@ -30,6 +33,10 @@ function ADDON:Print(...)
 end
 
 function ADDON:OnInitialize()
+	self.UpdateHandler = CreateFrame("Frame")
+	self.UpdateHandler:Hide()
+	self.UpdateHandler:SetScript("OnUpdate", self.OnUpdate)
+
 	self:SetupDB()
 
 	self:RegisterEvent("PLAYER_REGEN_ENABLED", "OnEvent")
@@ -121,11 +128,16 @@ function ADDON:SetInternalVariables()
 		},
 	}
 
+	-- coroutine
+	self.FRAMETIME_TARGET = 1 / 55
+	self.FRAMETIME_AVAILABLE = 8
+	self.FRAMETIME_RESERVE = 8
+	self.COROUTINE_TIMESTAMP = 0
+
 	-- throttling refreshes
-	self.refreshingSettings = false
-	self.reloadingSettings = false
-	self.profileThrottleSecs = 0.1
-	self.refreshThrottleSecs = 0.1
+	self.reloadSettingsCooldown = nil
+	self.reloadSettingsThrottle = 0.1
+	self.refreshQueue = {}
 
 	self.Masque = Masque and {} or nil
 
@@ -276,18 +288,19 @@ function ADDON:CompactUnitFrameProfiles_ApplyProfile(profile)
 		end
 	end
 
-	if not self.reloadingSettings then
-		self.reloadingSettings = true
-		C_Timer:After(self.profileThrottleSecs, function()
-			self.ReloadSetting()
-		end)
+	if not self.reloadSettingsCooldown then
+		self.reloadSettingsCooldown = self.reloadSettingsThrottle
+		self.UpdateHandler:Show()
+		ADDON.ReloadSetting()
+	else
+		self.reloadSettingsQueued = true
 	end
 end
 
 function ADDON.ReloadSetting()
 	ADDON:RefreshProfileSettings()
 	ADDON:SafeRefresh()
-	ADDON.reloadingSettings = false
+	ADDON.reloadSettingsCooldown = nil
 end
 
 function ADDON:GetRaidProfileSettings(profile)
@@ -413,8 +426,65 @@ function ADDON:CustomizeOptions()
 	end
 end
 
+function ADDON.OnUpdate(self, elapsed)
+	if ADDON.reloadSettingsCooldown then
+		ADDON.reloadSettingsCooldown = ADDON.reloadSettingsCooldown - elapsed
+
+		if ADDON.reloadSettingsCooldown <= 0 then
+			ADDON.reloadSettingsCooldown = nil
+			if ADDON.reloadSettingsQueued then
+				ADDON.reloadSettingsQueued = nil
+				ADDON.ReloadSetting()
+			end
+		end
+	end
+
+	if ADDON.COROUTINE then
+		local frametimeStep = ADDON.FRAMETIME_TARGET - elapsed
+
+		if frametimeStep ~= 0 then
+			frametimeStep = frametimeStep * 1000
+			ADDON.FRAMETIME_AVAILABLE = math.max(5, ADDON.FRAMETIME_AVAILABLE + frametimeStep)
+		end
+
+		ADDON.COROUTINE_TIMESTAMP = debugprofilestop()
+
+		local isInCombatLockDown = InCombatLockdown()
+		local groupType = ADDON.GetGroupType()
+		local status, err = coroutine.resume(ADDON.COROUTINE, groupType, isInCombatLockDown)
+
+		if not status then
+			ADDON.COROUTINE = nil
+			self:Hide()
+			geterrorhandler()(err)
+		elseif coroutine.status(ADDON.COROUTINE) == "dead" then
+			ADDON.COROUTINE = nil
+			self:Hide()
+		end
+	elseif not ADDON.reloadSettingsCooldown then
+		self:Hide()
+	end
+end
+
+function ADDON.RefrashCoroutine(groupType, isInCombatLockdown)
+	local frame, fType = next(ADDON.refreshQueue)
+	while frame do
+		if fType == "frame" then
+			ADDON:LayoutFrame(frame, groupType, isInCombatLockdown)
+			ADDON.MasqueSupport(frame)
+		elseif fType == "group" then
+			ADDON:LayoutGroup(frame, groupType, isInCombatLockdown)
+		end
+
+		if (debugprofilestop() - ADDON.COROUTINE_TIMESTAMP) > ADDON.FRAMETIME_AVAILABLE then
+			coroutine.yield()
+		end
+
+		frame, fType = next(ADDON.refreshQueue)
+	end
+end
+
 function ADDON:RefreshConfig(virtualGroupType)
-	local isInCombatLockDown = InCombatLockdown()
 	local groupType = self.GetGroupType()
 
 	twipe(self.healthFrameColors)
@@ -424,27 +494,46 @@ function ADDON:RefreshConfig(virtualGroupType)
 	end
 
 	for group in self.IterateCompactGroups(groupType) do
-		self:LayoutGroup(group, groupType, isInCombatLockDown)
+		self.refreshQueue[group] = "group"
 	end
 
 	for frame in self.IterateCompactFrames(groupType) do
-		self:LayoutFrame(frame, groupType, isInCombatLockDown)
-		self.MasqueSupport(frame)
+		self.refreshQueue[frame] = "frame"
+	end
+
+	self:CoroutineUpdateFrames(groupType)
+end
+
+function ADDON:CoroutineUpdateFrames(groupType)
+	if not self.COROUTINE and tCount(self.refreshQueue) ~= 0 then
+		self.COROUTINE = coroutine.create(self.RefrashCoroutine)
+
+		local framerate = GetFramerate()
+		self.FRAMETIME_TARGET = framerate > 63 and (1 / 60) or (1 / 55)
+		self.FRAMETIME_AVAILABLE = 1000 / framerate - self.FRAMETIME_RESERVE
+
+		local isInCombatLockdown = InCombatLockdown()
+		if not groupType then
+			groupType = self.GetGroupType()
+		end
+
+		local status, err = coroutine.resume(self.COROUTINE, groupType, isInCombatLockdown)
+		if not status then
+			self.COROUTINE = nil
+			self.UpdateHandler:Hide()
+			geterrorhandler()(err)
+		elseif coroutine.status(self.COROUTINE) == "dead" then
+			self.COROUTINE = nil
+			self.UpdateHandler:Hide()
+		else
+			self.UpdateHandler:Show()
+			return true
+		end
 	end
 end
 
 function ADDON:SafeRefresh(virtualGroupType)
-	if not self.refreshingSettings then
-		self.refreshingSettings = true
-		C_Timer:After(self.refreshThrottleSecs, function()
-			self:SafeRefreshInternal(virtualGroupType)
-		end)
-	end
-end
-
-function ADDON:SafeRefreshInternal(virtualGroupType)
-	self:RefreshConfig(virtualGroupType)
-	self.refreshingSettings = nil
+	ADDON:RefreshConfig(virtualGroupType)
 end
 
 -- Settings

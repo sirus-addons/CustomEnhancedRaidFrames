@@ -39,6 +39,8 @@ end
 
 local originalTitleHeight = {}
 function ADDON:LayoutGroup(frame, groupType, isInCombatLockDown)
+	self.refreshQueue[frame] = nil
+
 	if self.db.profile[groupType].frames.hideGroupTitles then
 		if not originalTitleHeight[frame] then
 			originalTitleHeight[frame] = frame.title:GetHeight()
@@ -59,6 +61,8 @@ function ADDON:LayoutGroup(frame, groupType, isInCombatLockDown)
 end
 
 function ADDON:LayoutFrame(frame, groupType, isInCombatLockDown)
+	self.refreshQueue[frame] = nil
+
 	local db = self.db.profile[groupType]
 	local deferred = false
 
