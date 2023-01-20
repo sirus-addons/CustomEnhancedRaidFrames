@@ -1,5 +1,5 @@
 local MAJOR_VERSION = "LibCustomGlow-1.0"
-local MINOR_VERSION = 15
+local MINOR_VERSION = 16
 if not LibStub then error(MAJOR_VERSION .. " requires LibStub.") end
 local lib, oldversion = LibStub:NewLibrary(MAJOR_VERSION, MINOR_VERSION)
 if not lib then return end
@@ -7,8 +7,6 @@ if not lib then return end
 local pairs, ipairs = pairs, ipairs
 local ceil, floor, min, mod = math.ceil, math.floor, math.min, mod
 local tinsert, tremove = table.insert, table.remove
-
-local Masque = LibStub("Masque", true)
 
 local ADDON_NAME = ...
 local textureList = {
@@ -85,7 +83,6 @@ local function addFrameAndTex(r, color, name, key, N, xOffset, yOffset, texture,
 			f.textures[i] = GlowTexPool:Acquire()
 			f.textures[i]:SetTexture(texture)
 			f.textures[i]:SetTexCoord(texCoord[1], texCoord[2], texCoord[3], texCoord[4])
-			f.textures[i]:SetDesaturated(desaturated)
 			f.textures[i]:SetParent(f)
 			f.textures[i]:SetDrawLayer("ARTWORK", 7)
 		end
@@ -261,7 +258,7 @@ lib.stopList["Pixel Glow"] = lib.PixelGlow_Stop
 --Autocast Glow Funcitons--
 local acSizes = {7, 6, 5, 4}
 local function acSizeChanged(self, width, height)
-	if not (width and height) then
+	if not (width or height) then
 		width, height = self:GetSize()
 	end
 
@@ -307,7 +304,7 @@ function lib.AutoCastGlow_Start(r, color, N, frequency, scale, xOffset, yOffset,
 
 	local period
 	if not frequency or frequency == 0 then
-		period = 8
+		period = 4
 	else
 		period = 1 / frequency
 	end
@@ -473,7 +470,7 @@ local function ScaleAnimation_OnStop(self)
 end
 
 local function CreateScaleAnim(group, target, order, duration, x, y, delay, smoothing, onPlay)
-	local scale = group:CreateAnimation("Scale")
+	local scale = group:CreateAnimation()
 
 	scale.target = scale:GetRegionParent()[target]
 
@@ -571,7 +568,7 @@ local function AlphaAnimation_OnStop(self)
 end
 
 local function CreateAlphaAnim(group, target, order, duration, fromAlpha, toAlpha, delay, appear, onPlay, onFinished)
-	local alpha = group:CreateAnimation("Alpha")
+	local alpha = group:CreateAnimation()
 
 	alpha.target = alpha:GetRegionParent()[target]
 
@@ -646,12 +643,6 @@ end
 
 local function bgUpdate(self, elapsed)
 	AnimateTexCoords(self.ants, 256, 256, 48, 48, 22, elapsed, self.throttle)
---	local cooldown = self:GetParent().cooldown;
---	if cooldown and cooldown:IsShown() and cooldown:GetCooldownDuration() > 3000 then
---		self:SetAlpha(0.5)
---	else
-		self:SetAlpha(1.0)
---	end
 end
 
 local function IsAnimPlaying(self)
@@ -793,7 +784,6 @@ function lib.ButtonGlow_Start(r, color, frequency, frameLevel)
 
 		if not color then
 			for texture in pairs(ButtonGlowTextures) do
-				f[texture]:SetDesaturated(nil)
 				f[texture]:SetVertexColor(1, 1, 1)
 				f[texture]:SetAlpha(f[texture]:GetAlpha() / (f.color and f.color[4] or 1))
 				updateAlphaAnim(f, 1)
@@ -801,7 +791,6 @@ function lib.ButtonGlow_Start(r, color, frequency, frameLevel)
 			f.color = false
 		else
 			for texture in pairs(ButtonGlowTextures) do
-				f[texture]:SetDesaturated(1)
 				f[texture]:SetVertexColor(color[1], color[2], color[3])
 				f[texture]:SetAlpha(f[texture]:GetAlpha() / (f.color and f.color[4] or 1) * color[4])
 				updateAlphaAnim(f,color and color[4] or 1)
@@ -826,13 +815,11 @@ function lib.ButtonGlow_Start(r, color, frequency, frameLevel)
 		if not color then
 			f.color = false
 			for texture in pairs(ButtonGlowTextures) do
-				f[texture]:SetDesaturated(nil)
 				f[texture]:SetVertexColor(1, 1, 1)
 			end
 		else
 			f.color = color
 			for texture in pairs(ButtonGlowTextures) do
-				f[texture]:SetDesaturated(1)
 				f[texture]:SetVertexColor(color[1], color[2], color[3])
 			end
 		end
@@ -840,13 +827,6 @@ function lib.ButtonGlow_Start(r, color, frequency, frameLevel)
 		f:SetScript("OnUpdate", bgUpdate)
 
 		f.animIn:Play()
-
-		if Masque and Masque.UpdateSpellAlert and (not r.overlay or not issecurevariable(r, "overlay")) then
-			local old_overlay = r.overlay
-			r.overlay = f
-			Masque:UpdateSpellAlert(r)
-			r.overlay = old_overlay
-		end
 	end
 end
 
