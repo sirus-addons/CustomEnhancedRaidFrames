@@ -214,7 +214,7 @@ function ADDON:RefreshProfileSettings()
 		self:SecureHook("CompactUnitFrame_UpdateRoleIcon", function(frame)
 			if not frame or not frame.unit then return end
 			local groupType = self.GetGroupType()
-			self:RoleIcon_Update(frame, groupType)
+			self.RoleIcon_Update(frame, groupType)
 			self.PowerBar_Update(frame, groupType)
 		end)
 	elseif (not db.roleIcon.enabled and not self.db.profile[groupType].frames.showResourceOnlyForHealers) and self:IsHooked("CompactUnitFrame_UpdateRoleIcon") then

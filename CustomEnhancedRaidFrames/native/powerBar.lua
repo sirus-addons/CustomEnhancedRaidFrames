@@ -51,7 +51,7 @@ function ADDON.PowerBar_Setup(frame, groupType, refresh)
 	end
 end
 
-function ADDON.RoleIcon_Update(frame, groupType)
+function ADDON.PowerBar_Update(frame, groupType)
 	ADDON.PowerBar_Setup(frame, groupType)
 end
 
