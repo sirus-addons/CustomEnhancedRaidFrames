@@ -1,6 +1,6 @@
 ## Interface: 30300
 ## Title: Custom Enhanced Raid Frames
-## Notes: |@Version: 3@|Extended Standart Raid\Party Frames
+## Notes: |@Version: 4@|Extended Standart Raid\Party Frames
 ## Version: 1.0
 ## SavedVariables: ERFDB
 ## SavedVariablesPerCharacter: ERFCharDB
