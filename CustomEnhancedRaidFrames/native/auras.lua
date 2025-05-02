@@ -180,6 +180,12 @@ do
 	function ADDON.CompactUnitFrame_UpdateAuras(frame)
 		if not frame or not frame.displayedUnit or not UnitExists(frame.displayedUnit) then return end
 
+		local notBuffFrames = not frame.buffFrames or not frame.optionTable.displayBuffs
+		local notDebuffFrames = not frame.debuffFrames or not frame.optionTable.displayDebuffs
+		local notDispelDebuffFrames = not frame.dispelDebuffFrames or not frame.optionTable.displayDispelDebuffs
+
+		if notBuffFrames or notDebuffFrames or notDispelDebuffFrames then return end
+
 		if not frame.buffFramesGlowing then
 			frame.buffFramesGlowing = {}
 		else
@@ -197,9 +203,9 @@ do
 		local maxDebuffs = min(db.debuffFrames.num, #frame.debuffFrames) or 3
 		local maxDispelDebuffs = min(db.dispelDebuffFrames.num, #frame.dispelDebuffFrames) or 3
 
-		local doneWithBuffs = not frame.buffFrames or not frame.optionTable.displayBuffs or maxBuffs == 0;
-		local doneWithDebuffs = not frame.debuffFrames or not frame.optionTable.displayDebuffs or maxDebuffs == 0;
-		local doneWithDispelDebuffs = not frame.dispelDebuffFrames or not frame.optionTable.displayDispelDebuffs or maxDispelDebuffs == 0;
+		local doneWithBuffs = notBuffFrames or maxBuffs == 0;
+		local doneWithDebuffs = notDebuffFrames or maxDebuffs == 0;
+		local doneWithDispelDebuffs = notDispelDebuffFrames or maxDispelDebuffs == 0;
 
 		local numUsedBuffs = 0;
 		local numUsedDebuffs = 0;

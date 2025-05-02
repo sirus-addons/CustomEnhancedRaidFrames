@@ -11,7 +11,7 @@ local strfind = string.find
 -- GLOBALS: CompactRaidGroup_UpdateLayout
 
 function ADDON:CompactUnitFrame_UpdateAll(frame)
-	if not frame then return end
+	if self.SkipFrame(frame) then return end
 
 	local groupType = ADDON.GetGroupType()
 	if groupType ~= self.currentGroup then

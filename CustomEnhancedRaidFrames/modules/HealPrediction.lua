@@ -193,6 +193,11 @@ end
 --WARNING: This function is very similar to the function UnitFrameHealPredictionBars_Update in UnitFrame.lua.
 --If you are making changes here, it is possible you may want to make changes there as well.
 function ADDON.CompactUnitFrame_UpdateHealPrediction(frame)
+	if not frame.statusText then
+		-- ignore nameplates
+		return
+	end
+	
 	ADDON.CreateHealPredictionBar(frame)
 
 	local _, maxHealth = frame.healthBar:GetMinMaxValues();

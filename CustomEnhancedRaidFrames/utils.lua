@@ -756,8 +756,12 @@ function ADDON:ImportCurrentProfile(text)
 	end
 end
 
+function ADDON.SkipFrame(frame)
+	return not frame or not frame:GetName() or frame.isNamePlate
+end
+
 function ADDON.IsFrameOk(frame)
-	return frame and (UnitExists(frame.displayedUnit)) and not (frame.unit and strfind(frame.unit, "pet", 1, true))
+	return not ADDON.SkipFrame(frame) and (UnitExists(frame.displayedUnit)) and not (frame.unit and strfind(frame.unit, "pet", 1, true))
 end
 
 local ABBREVIATE_FORMAT = {
