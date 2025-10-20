@@ -102,6 +102,10 @@ function ADDON:SetupOptions()
 				name = L["Heal Prediction"],
 				desc = L["Heal Prediction settings"],
 
+				hidden = function()
+					return ADDON.IsIncomingHealsNative() and ADDON.IsAbsorbsNative()
+				end,
+
 				set = function(info, val)
 					self.db.profile.healPrediction[info[#info]] = val
 					ADDON.HealPredictionUpdateAll()
@@ -118,6 +122,7 @@ function ADDON:SetupOptions()
 						name = L["Enable Incoming Heal"],
 						desc = "",
 						disabled = false,
+						hidden = ADDON.IsIncomingHealsNative(),
 						set = function(info, val)
 							self.db.profile.healPrediction[info[#info]] = val
 							ADDON:ToggleHealComm(val)
@@ -132,6 +137,7 @@ function ADDON:SetupOptions()
 						name = L["Enable Absorbs"],
 						desc = "",
 						disabled = false,
+						hidden = ADDON.IsAbsorbsNative(),
 						set = function(info, val)
 							self.db.profile.healPrediction[info[#info]] = val
 							ADDON:ToggleLibAbsorb(val)

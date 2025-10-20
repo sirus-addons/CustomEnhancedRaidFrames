@@ -146,6 +146,18 @@ ADDON.rowsGrows = {
 	}
 }
 
+local UnitGetIncomingHeals = _G["UnitGetIncomingHeals"]
+local UnitGetTotalAbsorbs = _G["UnitGetTotalAbsorbs"]
+
+function ADDON.IsIncomingHealsNative()
+--	return type(UnitGetIncomingHeals) == "function"
+	return false
+end
+
+function ADDON.IsAbsorbsNative()
+	return type(UnitGetTotalAbsorbs) == "function"
+end
+
 function ADDON.GetUnitRole(unit)
 	if UnitInVehicle(unit) and UnitHasVehicleUI(unit) then
 		return "VEHICLE"

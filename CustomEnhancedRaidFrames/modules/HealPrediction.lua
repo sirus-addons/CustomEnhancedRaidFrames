@@ -11,61 +11,75 @@ local GetTime = GetTime
 local UnitGUID = UnitGUID
 local hooksecurefunc = hooksecurefunc
 
-local HealComm = LibStub("LibHealComm-4.0")
-local LibAbsorb = LibStub("SpecializedAbsorbs-1.0")
+local HealComm = LibStub("LibHealComm-4.0", true)
+local LibAbsorb = LibStub("SpecializedAbsorbs-1.0", true)
 
 -- GLOBALS: CompactUnitFrameUtil_UpdateFillBar
 -- GLOBALS: ERF_CompactRaidFrameContainer_GetUnitFrame, ERF_CompactRaidFrameReservation_GetFrame, ADDON.CompactUnitFrame_UpdateHealPrediction, ADDON.DefaultCompactUnitFrameSetup
 
 ADDON.CreatedCompactUnitFrames = {}
 
+local optionsMapMeta = {
+	__index = function(this, key)
+		if key == "maxHealOverflowRatio" then
+			return ADDON.db.profile.healPrediction.healMaxOverflowPercent
+		end
+	end
+}
+
 function ADDON.CreateHealPredictionBar(frame)
 	if frame.ERFOverlay then return end
 
-	local overlay = CreateFrame("Frame", strformat("%sERFOverlay", frame:GetName()), frame.healthBar, "ERF_CompactUnitFrameOverlayTemplate")
-	frame.ERFOverlay = overlay
+	frame.customOptions = {}
+	setmetatable(frame.customOptions, optionsMapMeta)
 
-	frame.myHealPrediction = overlay.myHealPrediction
+	frame.ERFOverlay = true
 
-	frame.otherHealPrediction = overlay.otherHealPrediction
+	if not frame.healthBar.overlay then
+		local overlay = CreateFrame("Frame", strformat("%sERFOverlay", frame:GetName()), frame.healthBar, "ERF_CompactUnitFrameOverlayTemplate")
 
-	frame.totalAbsorb = overlay.totalAbsorb
-	frame.totalAbsorbOverlay = overlay.totalAbsorbOverlay
+		frame.myHealPrediction = overlay.myHealPrediction
 
-	frame.myHealAbsorb = overlay.myHealAbsorb
+		frame.otherHealPrediction = overlay.otherHealPrediction
 
-	frame.myHealAbsorbLeftShadow = overlay.myHealAbsorbLeftShadow
-	frame.myHealAbsorbRightShadow = overlay.myHealAbsorbRightShadow
+		frame.totalAbsorb = overlay.totalAbsorb
+		frame.totalAbsorbOverlay = overlay.totalAbsorbOverlay
 
-	frame.overAbsorbGlow = overlay.overAbsorbGlow
-	frame.overHealAbsorbGlow = overlay.overHealAbsorbGlow
+		frame.myHealAbsorb = overlay.myHealAbsorb
 
-	frame.name:SetParent(overlay)
-	frame.name:SetDrawLayer("BORDER")
-	frame.statusText:SetParent(overlay)
-	frame.statusText:SetDrawLayer("BORDER")
-	frame.raidTargetIcon:SetParent(overlay)
-	frame.raidTargetIcon:SetDrawLayer("BORDER")
-	frame.roleIcon:SetParent(overlay)
-	frame.roleIcon:SetDrawLayer("BORDER")
-	frame.roleGroupIcon:SetParent(overlay)
-	frame.roleGroupIcon:SetDrawLayer("BORDER")
-	frame.aggroHighlight:SetParent(overlay)
-	frame.aggroHighlight:SetDrawLayer("BORDER")
-	frame.selectionHighlight:SetParent(overlay)
-	frame.selectionHighlight:SetDrawLayer("OVERLAY")
+		frame.myHealAbsorbLeftShadow = overlay.myHealAbsorbLeftShadow
+		frame.myHealAbsorbRightShadow = overlay.myHealAbsorbRightShadow
 
-	local frameLevel = frame:GetFrameLevel()
-	for _, debuffFrame in ipairs(frame.debuffFrames) do
-		debuffFrame:SetFrameLevel(frameLevel + 2)
+		frame.overAbsorbGlow = overlay.overAbsorbGlow
+		frame.overHealAbsorbGlow = overlay.overHealAbsorbGlow
+
+		frame.name:SetParent(overlay)
+		frame.name:SetDrawLayer("BORDER")
+		frame.statusText:SetParent(overlay)
+		frame.statusText:SetDrawLayer("BORDER")
+		frame.raidTargetIcon:SetParent(overlay)
+		frame.raidTargetIcon:SetDrawLayer("BORDER")
+		frame.roleIcon:SetParent(overlay)
+		frame.roleIcon:SetDrawLayer("BORDER")
+		frame.roleGroupIcon:SetParent(overlay)
+		frame.roleGroupIcon:SetDrawLayer("BORDER")
+		frame.aggroHighlight:SetParent(overlay)
+		frame.aggroHighlight:SetDrawLayer("BORDER")
+		frame.selectionHighlight:SetParent(overlay)
+		frame.selectionHighlight:SetDrawLayer("OVERLAY")
+
+		local frameLevel = frame:GetFrameLevel()
+		for _, debuffFrame in ipairs(frame.debuffFrames) do
+			debuffFrame:SetFrameLevel(frameLevel + 2)
+		end
+		for _, bebuffFrame in ipairs(frame.buffFrames) do
+			bebuffFrame:SetFrameLevel(frameLevel + 2)
+		end
+		for _, dispelDebuffFrame in ipairs(frame.dispelDebuffFrames) do
+			dispelDebuffFrame:SetFrameLevel(frameLevel + 2)
+		end
+		frame.centerStatusIcon:SetFrameLevel(frameLevel + 2)
 	end
-	for _, bebuffFrame in ipairs(frame.buffFrames) do
-		bebuffFrame:SetFrameLevel(frameLevel + 2)
-	end
-	for _, dispelDebuffFrame in ipairs(frame.dispelDebuffFrames) do
-		dispelDebuffFrame:SetFrameLevel(frameLevel + 2)
-	end
-	frame.centerStatusIcon:SetFrameLevel(frameLevel + 2)
 
 	ADDON.CreatedCompactUnitFrames[#ADDON.CreatedCompactUnitFrames + 1] = frame
 end
@@ -83,7 +97,7 @@ end
 function ADDON.DefaultCompactUnitFrameSetup(frame)
 	ADDON.CreateHealPredictionBar(frame)
 
-	if ADDON.db.profile.healPrediction.heal or ADDON.db.profile.healPrediction.absorbs then
+	if not frame.healthBar.overlay and (ADDON.db.profile.healPrediction.heal or ADDON.db.profile.healPrediction.absorbs) then
 		frame.myHealPrediction:ClearAllPoints();
 		frame.myHealPrediction:SetTexture(1,1,1);
 		frame.myHealPrediction:SetGradient("VERTICAL", 8/255, 93/255, 72/255, 11/255, 136/255, 105/255);
@@ -190,6 +204,22 @@ local function UnitGetTotalHealAbsorbs(unit)
 	return 0
 end
 
+do -- make functions global
+	if _G["UnitGetIncomingHeals"] == nil or not ADDON.IsIncomingHealsNative() then
+		_G.UnitGetIncomingHeals = UnitGetIncomingHeals
+	else
+		UnitGetIncomingHeals = _G.UnitGetIncomingHeals
+	end
+
+	if _G["UnitGetTotalAbsorbs"] == nil or not ADDON.IsAbsorbsNative() then
+		_G.UnitGetTotalAbsorbs = UnitGetTotalAbsorbs
+		_G.UnitGetTotalHealAbsorbs = UnitGetTotalHealAbsorbs
+	else
+		UnitGetTotalAbsorbs = _G.UnitGetTotalAbsorbs or UnitGetTotalAbsorbs
+		UnitGetTotalHealAbsorbs = _G.UnitGetTotalHealAbsorbs or UnitGetTotalHealAbsorbs
+	end
+end
+
 --WARNING: This function is very similar to the function UnitFrameHealPredictionBars_Update in UnitFrame.lua.
 --If you are making changes here, it is possible you may want to make changes there as well.
 function ADDON.CompactUnitFrame_UpdateHealPrediction(frame)
@@ -197,8 +227,13 @@ function ADDON.CompactUnitFrame_UpdateHealPrediction(frame)
 		-- ignore nameplates
 		return
 	end
-	
+
 	ADDON.CreateHealPredictionBar(frame)
+
+	if type(CompactUnitFrame_UpdateHealPrediction) == "function" then
+		CompactUnitFrame_UpdateHealPrediction(frame)
+		return
+	end
 
 	local _, maxHealth = frame.healthBar:GetMinMaxValues();
 	local health = frame.healthBar:GetValue();
@@ -416,6 +451,10 @@ do
 end
 
 function ADDON:ToggleHealComm(state)
+	if ADDON.IsIncomingHealsNative() then
+		return
+	end
+
 	if state and not self.healCommEnabled then
 		self.healCommEnabled = true
 		HealComm.RegisterCallback(HealCommHandler, "HealComm_HealStarted", "HealStarted")
@@ -436,6 +475,10 @@ function ADDON:ToggleHealComm(state)
 end
 
 function ADDON:ToggleLibAbsorb(state)
+	if ADDON.IsAbsorbsNative() then
+		return
+	end
+
 	if state and not self.libAbsorbEnabled then
 		self.libAbsorbEnabled = true
 		LibAbsorb.RegisterCallback(LibAbsorbHandler, "EffectApplied", "EffectApplied")
@@ -463,6 +506,11 @@ end
 
 function ADDON:InitializeBars()
 	if self.initializedBars then return end
+
+	if ADDON.IsIncomingHealsNative() and ADDON.IsAbsorbsNative() then
+		self.initializedBars = true
+		return
+	end
 
 	self.CreateAllExistingBars(CompactRaidFrameContainer)
 

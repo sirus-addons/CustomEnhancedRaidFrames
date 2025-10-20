@@ -1,3 +1,5 @@
+if type(UnitGetTotalAbsorbs) == "function" then return end
+
 ------------------------------------------------------------------------
 -- SpecializedAbsorbs -fixes fxpw for sirus
 ------------------------------------------------------------------------
