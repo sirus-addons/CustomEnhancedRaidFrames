@@ -18,6 +18,22 @@ local LibAbsorb = LibStub("SpecializedAbsorbs-1.0", true)
 -- GLOBALS: ERF_CompactRaidFrameContainer_GetUnitFrame, ERF_CompactRaidFrameReservation_GetFrame, ADDON.CompactUnitFrame_UpdateHealPrediction, ADDON.DefaultCompactUnitFrameSetup
 
 ADDON.CreatedCompactUnitFrames = {}
+ADDON.CreatedUnitFrames = {
+	"PlayerFrame",
+	"PetFrame",
+	"TargetFrame",
+--	"TargetFrameToT",
+	"FocusFrame",
+	"PartyMemberFrame1",
+	"PartyMemberFrame2",
+	"PartyMemberFrame3",
+	"PartyMemberFrame4",
+--	"ArenaEnemyFrame1",
+--	"ArenaEnemyFrame2",
+--	"ArenaEnemyFrame3",
+--	"ArenaEnemyFrame4",
+--	"ArenaEnemyFrame5",
+}
 
 local optionsMapMeta = {
 	__index = function(this, key)
@@ -363,6 +379,13 @@ function ADDON.HealPredictionUpdateGUIDs(...)
 				ADDON.CompactUnitFrame_UpdateHealPrediction(frame)
 			end
 		end
+		
+		for _, frameName in ipairs(ADDON.CreatedUnitFrames) do
+			local frame = _G[frameName]
+			if frame and frame.unit and frame:IsVisible() and UnitGUID(frame.unit) == select(i, ...) then
+				UnitFrameHealPredictionBars_Update(frame)
+			end
+		end
 	end
 end
 
@@ -370,6 +393,13 @@ function ADDON.HealPredictionUpdateAll()
 	for _, frame in ipairs(ADDON.CreatedCompactUnitFrames) do
 		if frame.displayedUnit and frame:IsVisible() then
 			ADDON.CompactUnitFrame_UpdateHealPrediction(frame)
+		end
+	end
+	
+	for _, frameName in ipairs(ADDON.CreatedUnitFrames) do
+		local frame = _G[frameName]
+		if frame and frame.unit and frame:IsVisible() and UnitExists(frame.unit) then
+			UnitFrameHealPredictionBars_Update(frame)
 		end
 	end
 end
