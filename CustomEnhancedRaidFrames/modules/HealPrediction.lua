@@ -44,7 +44,9 @@ local optionsMapMeta = {
 }
 
 function ADDON.CreateHealPredictionBar(frame)
-	if frame.ERFOverlay then return end
+	if frame.ERFOverlay then
+		return false
+	end
 
 	frame.customOptions = {}
 	setmetatable(frame.customOptions, optionsMapMeta)
@@ -98,6 +100,7 @@ function ADDON.CreateHealPredictionBar(frame)
 	end
 
 	ADDON.CreatedCompactUnitFrames[#ADDON.CreatedCompactUnitFrames + 1] = frame
+	return true
 end
 
 function ADDON.CreateAllExistingBars(container)
@@ -222,7 +225,11 @@ end
 
 do -- make functions global
 	if _G["UnitGetIncomingHeals"] == nil or not ADDON.IsIncomingHealsNative() then
-		_G.UnitGetIncomingHeals = UnitGetIncomingHeals
+		if _G["UnitGetIncomingHealsInsecure"] then
+			_G.UnitGetIncomingHealsInsecure = UnitGetIncomingHeals
+		else
+			_G.UnitGetIncomingHeals = UnitGetIncomingHeals
+		end
 	else
 		UnitGetIncomingHeals = _G.UnitGetIncomingHeals
 	end
@@ -236,18 +243,24 @@ do -- make functions global
 	end
 end
 
+function ADDON.CompactUnitFrame_UpdateMaxHealth(frame)
+	ADDON.CompactUnitFrame_UpdateHealPrediction(frame, true)
+end
+
 --WARNING: This function is very similar to the function UnitFrameHealPredictionBars_Update in UnitFrame.lua.
 --If you are making changes here, it is possible you may want to make changes there as well.
-function ADDON.CompactUnitFrame_UpdateHealPrediction(frame)
+function ADDON.CompactUnitFrame_UpdateHealPrediction(frame, isMaxHealthUpdate)
 	if not frame.statusText then
 		-- ignore nameplates
 		return
 	end
 
-	ADDON.CreateHealPredictionBar(frame)
+	local wasCreated = ADDON.CreateHealPredictionBar(frame)
 
 	if type(CompactUnitFrame_UpdateHealPrediction) == "function" then
-		CompactUnitFrame_UpdateHealPrediction(frame)
+		if wasCreated or not isMaxHealthUpdate then
+			CompactUnitFrame_UpdateHealPrediction(frame)
+		end
 		return
 	end
 
@@ -550,7 +563,7 @@ function ADDON:InitializeBars()
 	hooksecurefunc("DefaultCompactUnitFrameSetup", ADDON.DefaultCompactUnitFrameSetup)
 	hooksecurefunc("DefaultCompactMiniFrameSetup", ADDON.DefaultCompactUnitFrameSetup)
 
-	hooksecurefunc("CompactUnitFrame_UpdateMaxHealth", ADDON.CompactUnitFrame_UpdateHealPrediction)
+	hooksecurefunc("CompactUnitFrame_UpdateMaxHealth", ADDON.CompactUnitFrame_UpdateMaxHealth)
 
 	self:ToggleHealComm(ADDON.db.profile.healPrediction.heal)
 	self:ToggleLibAbsorb(ADDON.db.profile.healPrediction.absorbs)
