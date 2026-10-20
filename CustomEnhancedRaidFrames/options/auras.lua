@@ -47,7 +47,7 @@ function ADDON:SetupAuraFrames(groupType, auraType)
 			desc = "",
 			set = function(info, val)
 				self.db.profile[groupType][auraTypeDB].num = val
-				self.UpdateAllCompactFrames(self.CompactUnitFrame_UpdateAuras)
+				self:SafeRefresh(groupType)
 			end,
 			get = function(info)
 				return self.db.profile[groupType][auraTypeDB].num

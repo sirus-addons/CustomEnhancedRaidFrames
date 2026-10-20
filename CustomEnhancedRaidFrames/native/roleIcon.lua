@@ -20,7 +20,7 @@ function ADDON.RoleIcon_Setup(frame, groupType)
 	local db = ADDON.db.profile[groupType].nameAndIcons.roleIcon
 	local size = db.size * ADDON.ComponentScale(groupType)
 
-	local xOffset, yOffset = ADDON:Offsets("TOPLEFT", frame, groupType)
+	local xOffset, yOffset = ADDON:Offsets(db.anchorPoint, frame, groupType)
 	xOffset = xOffset + db.xOffset
 	yOffset = yOffset + db.yOffset
 
@@ -61,6 +61,7 @@ function ADDON.RoleIcon_Update(frame, groupType)
 
 				frame.roleIconERF:SetVertexColor(1, 1, 1, 1)
 			end
+			frame.roleIconERF:Show()
 		else
 			frame.roleIconERF:Hide()
 		end

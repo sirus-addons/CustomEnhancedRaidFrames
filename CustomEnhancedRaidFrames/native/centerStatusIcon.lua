@@ -9,7 +9,7 @@ local UnitHasIncomingResurrection = UnitHasIncomingResurrection
 
 local Enum = Enum
 
--- GLOBALS: CompactUnitFrame_UpdateCenterStatusIcon, DefaultCompactUnitFrameSetupOptions
+-- GLOBALS: CompactUnitFrame_UpdateCenterStatusIcon
 
 function ADDON.CompactUnitFrame_UpdateCenterStatusIcon(frame, groupType)
 	ADDON.CenterStatusIcon_Update(frame, groupType)
@@ -26,7 +26,7 @@ function ADDON.CenterStatusIcon_Setup(frame, groupType)
 
 	local xOffset, yOffset = ADDON:Offsets("BOTTOM", frame, groupType)
 	xOffset = xOffset + db.xOffset
-	yOffset = yOffset + db.yOffset + (((DefaultCompactUnitFrameSetupOptions["height"] or ADDON.NATIVE_UNIT_FRAME_HEIGHT) / 3) - 4)
+	yOffset = yOffset + db.yOffset + ((select(2, ADDON.GetUnitFrameSize(groupType)) / 3) - 4)
 
 	centerStatusIcon:ClearAllPoints()
 	centerStatusIcon:SetPoint("BOTTOM", xOffset, yOffset)
@@ -93,7 +93,7 @@ end
 
 function ADDON.CenterStatusIcon_Revert()
 	local groupType = ADDON.GetGroupType()
-	local size = 11 * ADDON.ComponentScale(groupType) * 2
+	local size = 11 * ADDON.NativeComponentScale(groupType) * 2
 
 	for frame in ADDON.IterateCompactFrames() do
 		if frame.unit then

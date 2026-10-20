@@ -31,10 +31,16 @@ end
 
 function ADDON:CompactRaidFrameContainer_LayoutFrames()
 	local groupType = ADDON.GetGroupType()
+	local inCombat = InCombatLockdown()
 
 	for group in self.IterateCompactGroups(groupType) do
-		self:LayoutGroup(group, groupType)
+		self:LayoutGroup(group, groupType, inCombat)
 	end
+
+	if CompactPartyFrame then
+		self:AssignPartyUnits(CompactPartyFrame)
+	end
+	self:RemovePlayerFromContainer(CompactRaidFrameContainer)
 end
 
 local originalTitleHeight = {}
@@ -56,7 +62,11 @@ function ADDON:LayoutGroup(frame, groupType, isInCombatLockDown)
 	end
 
 	if not isInCombatLockDown then
-		CompactRaidGroup_UpdateLayout(frame)
+		if frame.updateLayoutFunc then
+			frame:updateLayoutFunc()
+		else
+			CompactRaidGroup_UpdateLayout(frame)
+		end
 	end
 end
 
@@ -73,16 +83,16 @@ function ADDON:LayoutFrame(frame, groupType, isInCombatLockDown)
 	end
 
 	do
-		local texture = SharedMedia:Fetch("statusbar", db.frames.texture) or SharedMedia:Fetch("statusbar", self:Defaults().profile[groupType].frames.texture)
+		local texture = SharedMedia:Fetch("statusbar", db.frames.texture)
 		frame.healthBar:SetStatusBarTexture(texture, "BORDER")
 
-		if not db.frames.showResourceOnlyForHealers and ADDON.displayPowerBar and (frame.unit and not strfind(frame.unit, "pet", 1, true)) then
+		if not self:ShowResourceOnlyForHealers(groupType) and ADDON.displayPowerBar and frame.unit and not self.IsMiniFrame(frame) then
 			frame.healthBar:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -1, db.frames.powerBarHeight + 1)
 			frame.horizDivider:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", 0, 1 + db.frames.powerBarHeight)
 			frame.horizDivider:SetPoint("TOPRIGHT", frame, "BOTTOMRIGHT", 0, 1 + db.frames.powerBarHeight)
 		end
 
-		local texture = SharedMedia:Fetch("statusbar", db.frames.powerBarTexture) or SharedMedia:Fetch("statusbar", self:Defaults().profile[groupType].frames.powerBarTexture)
+		local texture = SharedMedia:Fetch("statusbar", db.frames.powerBarTexture)
 		frame.powerBar:SetStatusBarTexture(texture, "BORDER")
 
 		self.PowerBar_Setup(frame, groupType, true)
@@ -99,8 +109,6 @@ function ADDON:LayoutFrame(frame, groupType, isInCombatLockDown)
 
 	if db.nameAndIcons.name.enabled then
 		self.Name_Setup(frame, groupType)
-	else
-		self.Name_Revert()
 	end
 
 	if db.nameAndIcons.statusText.enabled then
@@ -130,6 +138,8 @@ function ADDON:LayoutFrame(frame, groupType, isInCombatLockDown)
 	if db.frames.colorEnabled then
 		self.HealthBar_Setup(frame, groupType)
 	end
+
+	self.CompactUnitFrame_UpdateAuras(frame)
 
 	return deferred
 end

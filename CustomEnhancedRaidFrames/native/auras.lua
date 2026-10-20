@@ -14,11 +14,107 @@ local UnitAffectingCombat = UnitAffectingCombat
 local UnitExists = UnitExists
 
 local AuraUtil = AuraUtil
-local CompactUnitFrame_Util_IsBossAura = CompactUnitFrame_Util_IsBossAura
-local CompactUnitFrame_Util_SpellIsBlacklisted = CompactUnitFrame_Util_SpellIsBlacklisted
 
--- GLOBALS: CompactUnitFrame_HideAllDispelDebuffs, CompactUnitFrame_UtilSetDispelDebuff, CompactUnitFrame_Util_IsPriorityDebuff, CooldownFrame_SetTimer, DebuffTypeColor
--- GLOBALS: BOSS_DEBUFF_SIZE_INCREASE, BUFF_STACKS_OVERFLOW
+-- GLOBALS: CompactUnitFrame_UtilSetDispelDebuff, CompactUnitFrame_Util_IsPriorityDebuff, CooldownFrame_SetTimer, DebuffTypeColor
+-- GLOBALS: BUFF_STACKS_OVERFLOW, GameTooltip
+
+local IsBossAura = CompactUnitFrame_Util_IsBossAura
+local SpellIsBlacklisted = CompactUnitFrame_Util_SpellIsBlacklisted
+
+local function IsPriorityDebuff(...)
+	return CompactUnitFrame_Util_IsPriorityDebuff(...)
+end
+
+local function PrepareAuras(frame)
+end
+
+local function SetAuraTooltip(auraFrame, filter)
+end
+
+local function ClearAuraTooltips(frame)
+end
+
+local function SetDispelDebuff(dispelDebuffFrame, debuffType, index)
+	CompactUnitFrame_UtilSetDispelDebuff(dispelDebuffFrame, debuffType, index)
+end
+
+if not IsBossAura then
+	local FACTION_OVERRIDE_BY_DEBUFFS = FACTION_OVERRIDE_BY_DEBUFFS
+	local S_CATEGORY_SPELL_ID = S_CATEGORY_SPELL_ID
+	local S_PREMIUM_SPELL_ID = S_PREMIUM_SPELL_ID
+	local S_VIP_STATUS_DATA = S_VIP_STATUS_DATA
+	local ZODIAC_DEBUFFS = ZODIAC_DEBUFFS
+
+	local bossAuras = {}
+	local dispelAura = {}
+
+	local function CollectBossAura(_, aura)
+		if aura.isBossAura then
+			bossAuras[aura.spellId] = true
+		end
+	end
+
+	local function UpdateTooltip(self)
+		if self.erfFilter then
+			GameTooltip:SetUnitAura(self:GetParent().displayedUnit, self:GetID(), self.erfFilter)
+		else
+			self:ERFUpdateTooltip()
+		end
+	end
+
+	local function ClearFilters(auraFrames)
+		if not auraFrames then
+			return
+		end
+		for i = 1, #auraFrames do
+			auraFrames[i].erfFilter = nil
+		end
+	end
+
+	function IsBossAura(...)
+		return bossAuras[select(11, ...)]
+	end
+
+	function SpellIsBlacklisted(spellId)
+		return FACTION_OVERRIDE_BY_DEBUFFS[spellId]
+			or ZODIAC_DEBUFFS[spellId]
+			or S_CATEGORY_SPELL_ID[spellId]
+			or S_VIP_STATUS_DATA[spellId]
+			or S_PREMIUM_SPELL_ID[spellId]
+	end
+
+	function IsPriorityDebuff(...)
+		return AuraUtil.IsPriorityDebuff((select(11, ...)))
+	end
+
+	function PrepareAuras(frame)
+		twipe(bossAuras)
+		if frame.debuffs then
+			frame.debuffs:Iterate(CollectBossAura)
+		end
+	end
+
+	function SetAuraTooltip(auraFrame, filter)
+		if not auraFrame.ERFUpdateTooltip then
+			auraFrame.ERFUpdateTooltip = auraFrame.UpdateTooltip
+			auraFrame.UpdateTooltip = UpdateTooltip
+		end
+		auraFrame.erfFilter = filter
+	end
+
+	function ClearAuraTooltips(frame)
+		ClearFilters(ADDON.GetAuraFrames(frame, "buffFrames"))
+		ClearFilters(ADDON.GetAuraFrames(frame, "debuffFrames"))
+		ClearFilters(ADDON.GetAuraFrames(frame, "dispelDebuffFrames"))
+	end
+
+	function SetDispelDebuff(dispelDebuffFrame, debuffType, index)
+		dispelAura.dispelName = debuffType
+		CompactUnitFrame_UtilSetDispelDebuff(dispelDebuffFrame, dispelAura)
+		dispelDebuffFrame:SetID(index)
+		SetAuraTooltip(dispelDebuffFrame, "HARMFUL|RAID")
+	end
+end
 
 --Utility Functions
 function ADDON.CompactUnitFrame_UtilShouldDisplayBuff(unit, ...)
@@ -32,7 +128,7 @@ function ADDON.CompactUnitFrame_UtilShouldDisplayBuff(unit, ...)
 		return true
 	end
 
-	if CompactUnitFrame_Util_SpellIsBlacklisted(spellId) then
+	if SpellIsBlacklisted(spellId) then
 		return false
 	end
 
@@ -46,21 +142,50 @@ function ADDON.CompactUnitFrame_UtilShouldDisplayBuff(unit, ...)
 end
 
 function ADDON.CompactUnitFrame_HideAllBuffs(frame, startingIndex, db)
-	if frame.buffFrames then
-		for i=startingIndex or 1, #frame.buffFrames do
-			frame.buffFrames[i]:Hide();
-			ADDON.StopGlow(frame.buffFrames[i], db.buffFrames, "buffFrames", "auraGlow")
+	local buffFrames = ADDON.GetAuraFrames(frame, "buffFrames")
+	if buffFrames then
+		for i=startingIndex or 1, #buffFrames do
+			buffFrames[i]:Hide();
+			ADDON.StopGlow(buffFrames[i], db.buffFrames, "buffFrames", "auraGlow")
 		end
 	end
 end
 
 function ADDON.CompactUnitFrame_HideAllDebuffs(frame, startingIndex, db)
-	if frame.debuffFrames then
-		for i=startingIndex or 1, #frame.debuffFrames do
-			frame.debuffFrames[i]:Hide();
-			ADDON.StopGlow(frame.debuffFrames[i], db.debuffFrames, "debuffFrames", "auraGlow")
+	local debuffFrames = ADDON.GetAuraFrames(frame, "debuffFrames")
+	if debuffFrames then
+		for i=startingIndex or 1, #debuffFrames do
+			debuffFrames[i]:Hide();
+			ADDON.StopGlow(debuffFrames[i], db.debuffFrames, "debuffFrames", "auraGlow")
 		end
 	end
+end
+
+local function HideDispelDebuffs(dispelDebuffFrames, startingIndex)
+	for i = startingIndex, #dispelDebuffFrames do
+		dispelDebuffFrames[i]:Hide()
+	end
+end
+
+local function HideExtraAuraFrames(frame)
+	if not frame.ERFAuraFrames then return end
+
+	for subFrameType, typedFrames in pairs(frame.ERFAuraFrames) do
+		for i = #frame[subFrameType] + 1, #typedFrames do
+			typedFrames[i]:Hide()
+		end
+	end
+end
+
+local function StopGlows(frame, key)
+	local db = ADDON.db.profile.glows
+	local auraFrames = frame.ERFAuraFrames and frame.ERFAuraFrames[key]
+	if auraFrames then
+		for i = 1, #auraFrames do
+			ADDON.StopGlow(auraFrames[i], db.auraGlow[key], key, "auraGlow")
+		end
+	end
+	ADDON.StopGlow(frame, db.frameGlow[key], key, "frameGlow")
 end
 
 function ADDON.CompactUnitFrame_UtilSetBuff(buffFrame, index, ...)
@@ -77,6 +202,7 @@ function ADDON.CompactUnitFrame_UtilSetBuff(buffFrame, index, ...)
 		buffFrame.count:Hide();
 	end
 	buffFrame:SetID(index);
+	SetAuraTooltip(buffFrame, "HELPFUL");
 	local enabled = expirationTime and expirationTime ~= 0;
 	if enabled then
 		local startTime = expirationTime - duration;
@@ -86,30 +212,24 @@ function ADDON.CompactUnitFrame_UtilSetBuff(buffFrame, index, ...)
 	end
 	buffFrame:Show();
 
-	buffFrame.buffFramesGlowing = nil
-	name = name and name:lower()
-	debuffType = debuffType and debuffType:lower() or "physical"
-	spellId = tostring(spellId)
-
 	local db = ADDON.db.profile.glows
+	local auraGlow, frameGlow = db.auraGlow.buffFrames, db.frameGlow.buffFrames
 
-	if db.auraGlow.buffFrames.enabled then
-		if ADDON:TrackAuras(name, debuffType, spellId, db.auraGlow.buffFrames.tracking) then
-			local color = db.auraGlow.buffFrames.useDefaultsColors and db.auraGlow.defaultColors[debuffType]
-			ADDON.StartGlow(buffFrame, db.auraGlow.buffFrames, color, "buffFrames", "auraGlow")
-			buffFrame.buffFramesGlowing = debuffType
-		end
+	if auraGlow.enabled or frameGlow.enabled then
+		name = name and name:lower()
+		debuffType = debuffType and debuffType:lower() or "physical"
+		spellId = tostring(spellId)
 	end
 
-	if not buffFrame.buffFramesGlowing then
-		ADDON.StopGlow(buffFrame, db.auraGlow.buffFrames, "buffFrames", "auraGlow")
+	if auraGlow.enabled and ADDON:TrackAuras(name, debuffType, spellId, auraGlow.tracking) then
+		ADDON.StartGlow(buffFrame, auraGlow, auraGlow.useDefaultsColors and db.auraGlow.defaultColors[debuffType], "buffFrames", "auraGlow")
+	else
+		ADDON.StopGlow(buffFrame, auraGlow, "buffFrames", "auraGlow")
 	end
 
-	local parent = buffFrame:GetParent()
-
-	parent.buffFramesGlowing[debuffType] = {name, debuffType, spellId}
-	parent.buffFramesGlowing[name] = {name, debuffType, spellId}
-	parent.buffFramesGlowing[spellId] = {name, debuffType, spellId}
+	if frameGlow.enabled then
+		buffFrame:GetParent().buffFramesGlowing[spellId] = {name, debuffType, spellId}
+	end
 
 	if ADDON.Masque and ADDON.db.profile.Masque then
 		SetParentFrameLevel(buffFrame, 4)
@@ -127,7 +247,7 @@ function ADDON.CompactUnitFrame_Util_ShouldDisplayDebuff(unit, ...)
 		return true
 	end
 
-	if CompactUnitFrame_Util_SpellIsBlacklisted(spellId)
+	if SpellIsBlacklisted(spellId)
 	then
 		return false
 	end
@@ -154,13 +274,13 @@ do
 				local index, name, rank, icon, count, debuffType, duration, expirationTime, unitCaster, canStealOrPurge, shouldConsolidate, spellId = aura[1], aura[2], aura[3], aura[4], aura[5], aura[6], aura[7], aura[8], aura[9], aura[10], aura[11], aura[12];
 
 				if ADDON:FilterAuras(name, debuffType, spellId, "debuffFrames") then
-					ADDON.CompactUnitFrame_UtilSetDebuff(debuffFrame, index, "HARMFUL", isBossAura, isBossBuff, name, rank, icon, count, debuffType, duration, expirationTime, unitCaster, canStealOrPurge, shouldConsolidate, spellId);
+					ADDON.CompactUnitFrame_UtilSetDebuff(debuffFrame, index, filter, isBossAura, isBossBuff, name, rank, icon, count, debuffType, duration, expirationTime, unitCaster, canStealOrPurge, shouldConsolidate, spellId);
 					frameNum = frameNum + 1;
 
 					if not groupTypeDB.debuffFrames.smartAnchoring then
 						if isBossAura then
 							--Boss auras are about twice as big as normal debuffs, so we may need to display fewer buffs
-							local bossDebuffScale = (debuffFrame.baseSize + BOSS_DEBUFF_SIZE_INCREASE)/debuffFrame.baseSize;
+							local bossDebuffScale = groupTypeDB.debuffFrames.bigDebuffSize / groupTypeDB.debuffFrames.size;
 							maxDebuffs = maxDebuffs - (bossDebuffScale - 1);
 						end
 					end
@@ -170,21 +290,104 @@ do
 		return frameNum, maxDebuffs;
 	end
 
-	local function NumElements(arr)
-		return arr and #arr or 0;
+	local dispellableDebuffTypes = { Magic = true, Curse = true, Disease = true, Poison = true};
+
+	local curDB, curUnit, curIndex, curFrame, curBuffFrames, curDispelDebuffFrames
+	local maxBuffs, maxDebuffs, maxDispelDebuffs
+	local doneWithBuffs, doneWithDebuffs, doneWithDispelDebuffs
+	local numUsedBuffs, numUsedDebuffs, numUsedDispelDebuffs
+	local displayOnlyDispellableDebuffs
+	-- The following is the priority order for debuffs
+	local bossDebuffs, bossBuffs, priorityDebuffs, nonBossDebuffs, nonBossRaidDebuffs = {}, {}, {}, {}, {}
+
+	local function CollectHarmful(...)
+		if curDB.debuffFrames.showBigDebuffs and IsBossAura(...) then
+			tinsert(bossDebuffs, {curIndex, ...});
+			numUsedDebuffs = numUsedDebuffs + 1;
+			if numUsedDebuffs == maxDebuffs then
+				doneWithDebuffs = true;
+				return true;
+			end
+		elseif IsPriorityDebuff(...) then
+			tinsert(priorityDebuffs, {curIndex, ...});
+		elseif not displayOnlyDispellableDebuffs and ADDON.CompactUnitFrame_Util_ShouldDisplayDebuff(curUnit, ...) then
+			tinsert(nonBossDebuffs, {curIndex, ...});
+		end
+
+		curIndex = curIndex + 1;
+		return false;
 	end
 
-	local dispellableDebuffTypes = { Magic = true, Curse = true, Disease = true, Poison = true};
+	local function CollectHelpful(...)
+		if curDB.debuffFrames.showBigDebuffs and IsBossAura(...) then
+			-- Boss Auras are considered Debuffs for our purposes.
+			if not doneWithDebuffs then
+				tinsert(bossBuffs, {curIndex, ...});
+				numUsedDebuffs = numUsedDebuffs + 1;
+				if numUsedDebuffs == maxDebuffs then
+					doneWithDebuffs = true;
+				end
+			end
+		elseif ADDON.CompactUnitFrame_UtilShouldDisplayBuff(curUnit, ...) then
+			if not doneWithBuffs then
+				numUsedBuffs = numUsedBuffs + 1;
+				ADDON.CompactUnitFrame_UtilSetBuff(curBuffFrames[numUsedBuffs], curIndex, ...);
+				if numUsedBuffs == maxBuffs then
+					doneWithBuffs = true;
+				end
+			end
+		end
+
+		curIndex = curIndex + 1;
+		return doneWithBuffs and doneWithDebuffs;
+	end
+
+	local function CollectRaid(...)
+		if not doneWithDebuffs and displayOnlyDispellableDebuffs then
+			if ADDON.CompactUnitFrame_Util_ShouldDisplayDebuff(curUnit, ...) and not (curDB.debuffFrames.showBigDebuffs and IsBossAura(...)) and not IsPriorityDebuff(...) then
+				tinsert(nonBossRaidDebuffs, {curIndex, ...});
+				numUsedDebuffs = numUsedDebuffs + 1;
+				if numUsedDebuffs == maxDebuffs then
+					doneWithDebuffs = true;
+				end
+			end
+		end
+		if not doneWithDispelDebuffs then
+			local debuffType = select(5, ...);
+			if ( dispellableDebuffTypes[debuffType] and not curFrame["hasDispel"..debuffType] and ADDON:FilterAuras((...), debuffType, select(11, ...), "dispelDebuffFrames") ) then
+				curFrame["hasDispel"..debuffType] = true;
+				numUsedDispelDebuffs = numUsedDispelDebuffs + 1;
+				SetDispelDebuff(curDispelDebuffFrames[numUsedDispelDebuffs], debuffType, curIndex)
+				if numUsedDispelDebuffs == maxDispelDebuffs then
+					doneWithDispelDebuffs = true;
+				end
+			end
+		end
+		curIndex = curIndex + 1;
+		return (doneWithDebuffs or not displayOnlyDispellableDebuffs) and doneWithDispelDebuffs;
+	end
 
 	-- This interleaves updating buffFrames, debuffFrames and dispelDebuffFrames to reduce the number of calls to UnitAuraSlots/UnitAuraBySlot
 	function ADDON.CompactUnitFrame_UpdateAuras(frame)
-		if not frame or not frame.displayedUnit or not UnitExists(frame.displayedUnit) then return end
+		if ADDON.SkipFrame(frame) or not frame.displayedUnit or not UnitExists(frame.displayedUnit) then return end
 
-		local notBuffFrames = not frame.buffFrames or not frame.optionTable.displayBuffs
-		local notDebuffFrames = not frame.debuffFrames or not frame.optionTable.displayDebuffs
-		local notDispelDebuffFrames = not frame.dispelDebuffFrames or not frame.optionTable.displayDispelDebuffs
+		if not frame.buffFrames or not frame.optionTable.displayBuffs
+			or not frame.debuffFrames or not frame.optionTable.displayDebuffs
+			or not frame.dispelDebuffFrames or not frame.optionTable.displayDispelDebuffs then
+			ClearAuraTooltips(frame)
+			HideExtraAuraFrames(frame)
+			StopGlows(frame, "buffFrames")
+			StopGlows(frame, "debuffFrames")
+			return
+		end
 
-		if notBuffFrames or notDebuffFrames or notDispelDebuffFrames then return end
+		PrepareAuras(frame)
+
+		curFrame = frame
+		curUnit = frame.displayedUnit
+		curBuffFrames = ADDON.GetAuraFrames(frame, "buffFrames")
+		curDispelDebuffFrames = ADDON.GetAuraFrames(frame, "dispelDebuffFrames")
+		local debuffFrames = ADDON.GetAuraFrames(frame, "debuffFrames")
 
 		if not frame.buffFramesGlowing then
 			frame.buffFramesGlowing = {}
@@ -198,88 +401,39 @@ do
 		end
 
 		local db = ADDON.GetGroupTypeDB()
+		curDB = db
 
-		local maxBuffs = min(db.buffFrames.num, #frame.buffFrames) or 3
-		local maxDebuffs = min(db.debuffFrames.num, #frame.debuffFrames) or 3
-		local maxDispelDebuffs = min(db.dispelDebuffFrames.num, #frame.dispelDebuffFrames) or 3
+		maxBuffs = min(db.buffFrames.num, #curBuffFrames)
+		maxDebuffs = min(db.debuffFrames.num, #debuffFrames)
+		maxDispelDebuffs = min(db.dispelDebuffFrames.num, #curDispelDebuffFrames)
 
-		local doneWithBuffs = notBuffFrames or maxBuffs == 0;
-		local doneWithDebuffs = notDebuffFrames or maxDebuffs == 0;
-		local doneWithDispelDebuffs = notDispelDebuffFrames or maxDispelDebuffs == 0;
+		doneWithBuffs = maxBuffs == 0;
+		doneWithDebuffs = maxDebuffs == 0;
+		doneWithDispelDebuffs = maxDispelDebuffs == 0;
 
-		local numUsedBuffs = 0;
-		local numUsedDebuffs = 0;
-		local numUsedDispelDebuffs = 0;
+		numUsedBuffs = 0;
+		numUsedDebuffs = 0;
+		numUsedDispelDebuffs = 0;
 
-		local displayOnlyDispellableDebuffs = frame.optionTable.displayOnlyDispellableDebuffs;
+		displayOnlyDispellableDebuffs = frame.optionTable.displayOnlyDispellableDebuffs;
 
-		-- The following is the priority order for debuffs
-		local bossDebuffs, bossBuffs, priorityDebuffs, nonBossDebuffs, nonBossRaidDebuffs;
-		local index = 1;
-		local batchCount = maxDebuffs;
+		twipe(bossDebuffs)
+		twipe(bossBuffs)
+		twipe(priorityDebuffs)
+		twipe(nonBossDebuffs)
+		twipe(nonBossRaidDebuffs)
 
 		if not doneWithDebuffs then
-			AuraUtil.ForEachAura(frame.displayedUnit, "HARMFUL", batchCount, function(...)
-				if db.debuffFrames.showBigDebuffs and CompactUnitFrame_Util_IsBossAura(...) then
-					if not bossDebuffs then
-						bossDebuffs = {};
-					end
-					tinsert(bossDebuffs, {index, ...});
-					numUsedDebuffs = numUsedDebuffs + 1;
-					if numUsedDebuffs == maxDebuffs then
-						doneWithDebuffs = true;
-						return true;
-					end
-				elseif db.frames.showBigDebuffs and CompactUnitFrame_Util_IsPriorityDebuff(...) then
-					if not priorityDebuffs then
-						priorityDebuffs = {};
-					end
-					tinsert(priorityDebuffs, {index, ...});
-				elseif not displayOnlyDispellableDebuffs and ADDON.CompactUnitFrame_Util_ShouldDisplayDebuff(frame.displayedUnit, ...) then
-					if not nonBossDebuffs then
-						nonBossDebuffs = {};
-					end
-					tinsert(nonBossDebuffs, {index, ...});
-				end
-
-				index = index + 1;
-				return false;
-			end);
+			curIndex = 1;
+			AuraUtil.ForEachAura(curUnit, "HARMFUL", maxDebuffs, CollectHarmful);
 		end
 
 		if not doneWithBuffs or not doneWithDebuffs then
-			index = 1;
-			batchCount = max(maxBuffs, maxDebuffs);
-			AuraUtil.ForEachAura(frame.displayedUnit, "HELPFUL", batchCount, function(...)
-				if db.debuffFrames.showBigDebuffs and CompactUnitFrame_Util_IsBossAura(...) then
-					-- Boss Auras are considered Debuffs for our purposes.
-					if not doneWithDebuffs then
-						if not bossBuffs then
-							bossBuffs = {};
-						end
-						tinsert(bossBuffs, {index, ...});
-						numUsedDebuffs = numUsedDebuffs + 1;
-						if numUsedDebuffs == maxDebuffs then
-							doneWithDebuffs = true;
-						end
-					end
-				elseif ADDON.CompactUnitFrame_UtilShouldDisplayBuff(frame.displayedUnit, ...) then
-					if not doneWithBuffs then
-						numUsedBuffs = numUsedBuffs + 1;
-						local buffFrame = frame.buffFrames[numUsedBuffs];
-						ADDON.CompactUnitFrame_UtilSetBuff(buffFrame, index, ...);
-						if numUsedBuffs == maxBuffs then
-							doneWithBuffs = true;
-						end
-					end
-				end
-
-				index = index + 1;
-				return doneWithBuffs and doneWithDebuffs;
-			end);
+			curIndex = 1;
+			AuraUtil.ForEachAura(curUnit, "HELPFUL", max(maxBuffs, maxDebuffs), CollectHelpful);
 		end
 
-		numUsedDebuffs = min(maxDebuffs, numUsedDebuffs + NumElements(priorityDebuffs));
+		numUsedDebuffs = min(maxDebuffs, numUsedDebuffs + #priorityDebuffs);
 		if numUsedDebuffs == maxDebuffs then
 			doneWithDebuffs = true;
 		end
@@ -294,81 +448,56 @@ do
 		end
 
 		if not doneWithDispelDebuffs or not doneWithDebuffs then
-			batchCount = max(maxDebuffs, maxDispelDebuffs);
-			index = 1;
-			AuraUtil.ForEachAura(frame.displayedUnit, "HARMFUL|RAID", batchCount, function(...)
-				if not doneWithDebuffs and displayOnlyDispellableDebuffs then
-					if ADDON.CompactUnitFrame_Util_ShouldDisplayDebuff(frame.displayedUnit, ...) and not CompactUnitFrame_Util_IsBossAura(...) and not CompactUnitFrame_Util_IsPriorityDebuff(...) then
-						if not nonBossRaidDebuffs then
-							nonBossRaidDebuffs = {};
-						end
-						tinsert(nonBossRaidDebuffs, {index, ...});
-						numUsedDebuffs = numUsedDebuffs + 1;
-						if numUsedDebuffs == maxDebuffs then
-							doneWithDebuffs = true;
-						end
-					end
-				end
-				if not doneWithDispelDebuffs then
-					local debuffType = select(5, ...);
-					if ( dispellableDebuffTypes[debuffType] and not frame["hasDispel"..debuffType] ) then
-						frame["hasDispel"..debuffType] = true;
-						numUsedDispelDebuffs = numUsedDispelDebuffs + 1;
-						local dispellDebuffFrame = frame.dispelDebuffFrames[numUsedDispelDebuffs];
-						CompactUnitFrame_UtilSetDispelDebuff(dispellDebuffFrame, debuffType, index)
-						if numUsedDispelDebuffs == maxDispelDebuffs then
-							doneWithDispelDebuffs = true;
-						end
-					end
-				end
-				index = index + 1;
-				return (doneWithDebuffs or not displayOnlyDispellableDebuffs) and doneWithDispelDebuffs;
-			end);
+			curIndex = 1;
+			AuraUtil.ForEachAura(curUnit, "HARMFUL|RAID", max(maxDebuffs, maxDispelDebuffs), CollectRaid);
 		end
-
 		local frameNum = 1;
 		local maxDebuffs = maxDebuffs;
 
 		do
 			local isBossAura = true;
 			local isBossBuff = false;
-			frameNum, maxDebuffs = ADDON.SetDebuffsHelper(frame.debuffFrames, frameNum, maxDebuffs, "HARMFUL", isBossAura, isBossBuff, bossDebuffs);
+			frameNum, maxDebuffs = ADDON.SetDebuffsHelper(debuffFrames, frameNum, maxDebuffs, "HARMFUL", isBossAura, isBossBuff, bossDebuffs);
 		end
 		do
 			local isBossAura = true;
 			local isBossBuff = true;
-			frameNum, maxDebuffs = ADDON.SetDebuffsHelper(frame.debuffFrames, frameNum, maxDebuffs, "HELPFUL", isBossAura, isBossBuff, bossBuffs);
+			frameNum, maxDebuffs = ADDON.SetDebuffsHelper(debuffFrames, frameNum, maxDebuffs, "HELPFUL", isBossAura, isBossBuff, bossBuffs);
 		end
 		do
 			local isBossAura = false;
 			local isBossBuff = false;
-			frameNum, maxDebuffs = ADDON.SetDebuffsHelper(frame.debuffFrames, frameNum, maxDebuffs, "HARMFUL", isBossAura, isBossBuff, priorityDebuffs);
+			frameNum, maxDebuffs = ADDON.SetDebuffsHelper(debuffFrames, frameNum, maxDebuffs, "HARMFUL", isBossAura, isBossBuff, priorityDebuffs);
 		end
 		do
 			local isBossAura = false;
 			local isBossBuff = false;
-			frameNum, maxDebuffs = ADDON.SetDebuffsHelper(frame.debuffFrames, frameNum, maxDebuffs, "HARMFUL|RAID", isBossAura, isBossBuff, nonBossRaidDebuffs);
+			frameNum, maxDebuffs = ADDON.SetDebuffsHelper(debuffFrames, frameNum, maxDebuffs, "HARMFUL|RAID", isBossAura, isBossBuff, nonBossRaidDebuffs);
 		end
 		do
 			local isBossAura = false;
 			local isBossBuff = false;
-			frameNum, maxDebuffs = ADDON.SetDebuffsHelper(frame.debuffFrames, frameNum, maxDebuffs, "HARMFUL", isBossAura, isBossBuff, nonBossDebuffs);
+			frameNum, maxDebuffs = ADDON.SetDebuffsHelper(debuffFrames, frameNum, maxDebuffs, "HARMFUL", isBossAura, isBossBuff, nonBossDebuffs);
 		end
 		numUsedDebuffs = frameNum - 1;
 
 		ADDON.CompactUnitFrame_HideAllBuffs(frame, numUsedBuffs + 1, ADDON.db.profile.glows.auraGlow);
 		ADDON.CompactUnitFrame_HideAllDebuffs(frame, numUsedDebuffs + 1, ADDON.db.profile.glows.auraGlow);
-		CompactUnitFrame_HideAllDispelDebuffs(frame, numUsedDispelDebuffs + 1);
+		HideDispelDebuffs(curDispelDebuffFrames, numUsedDispelDebuffs + 1);
 
 		if db.debuffFrames.showBigDebuffs then
 			if db.debuffFrames.smartAnchoring then
 				ADDON:SmartAnchoring(frame, ADDON.GetGroupType())
 			end
 
-			if ADDON.db.profile.Masque then
-				for _, auraFrame in pairs(frame.debuffFrames) do
-					if auraFrame:IsShown() then
-						ADDON.Masque.debuffFrames:ReSkin(auraFrame)
+			if ADDON.Masque and ADDON.db.profile.Masque then
+				for i = 1, #debuffFrames do
+					local auraFrame = debuffFrames[i]
+					local size = auraFrame:GetWidth()
+					if auraFrame:IsShown() and auraFrame.erfMasqueSize ~= size then
+						auraFrame.erfMasqueSize = size
+						ADDON.Masque.debuffFrames:RemoveButton(auraFrame, true)
+						ADDON.Masque.debuffFrames:AddButton(auraFrame)
 					end
 				end
 			end
@@ -382,8 +511,8 @@ do
 
 				if ADDON:TrackAuras(name, debuffType, spellId, dbGlow.buffFrames.tracking) then
 					local color = dbGlow.buffFrames.useDefaultsColors and dbGlow.defaultColors[debuffType]
-					ADDON.StartGlow(frame, dbGlow.buffFrames, color, "buffFrames", "frameGlow")
 					ADDON.StopGlow(frame, dbGlow.debuffFrames, "debuffFrames", "frameGlow")
+					ADDON.StartGlow(frame, dbGlow.buffFrames, color, "buffFrames", "frameGlow")
 					return
 				end
 			end
@@ -395,8 +524,8 @@ do
 
 				if ADDON:TrackAuras(name, debuffType, spellId, dbGlow.debuffFrames.tracking) then
 					local color = dbGlow.debuffFrames.useDefaultsColors and dbGlow.defaultColors[debuffType]
-					ADDON.StartGlow(frame, dbGlow.debuffFrames, color, "debuffFrames", "frameGlow")
 					ADDON.StopGlow(frame, dbGlow.buffFrames, "buffFrames", "frameGlow")
+					ADDON.StartGlow(frame, dbGlow.debuffFrames, color, "debuffFrames", "frameGlow")
 					return
 				end
 			end
@@ -408,8 +537,6 @@ do
 end
 
 function ADDON.CompactUnitFrame_UtilSetDebuff(debuffFrame, index, filter, isBossAura, isBossBuff, ...)
-	debuffFrame.debuffFramesGlowing = nil
-
 	-- make sure you are using the correct index here!
 	--isBossAura says make this look large.
 	--isBossBuff looks in HELPFULL auras otherwise it looks in HARMFULL ones
@@ -427,6 +554,7 @@ function ADDON.CompactUnitFrame_UtilSetDebuff(debuffFrame, index, filter, isBoss
 		debuffFrame.count:Hide();
 	end
 	debuffFrame:SetID(index);
+	SetAuraTooltip(debuffFrame, filter);
 	local enabled = expirationTime and expirationTime ~= 0;
 	if enabled then
 		local startTime = expirationTime - duration;
@@ -453,28 +581,24 @@ function ADDON.CompactUnitFrame_UtilSetDebuff(debuffFrame, index, filter, isBoss
 	debuffFrame:SetSize(size, size)
 	debuffFrame:Show();
 
-	name = name and name:lower()
-	debuffType = debuffType and debuffType:lower() or "physical"
-	spellId = tostring(spellId)
-
 	local db = ADDON.db.profile.glows
+	local auraGlow, frameGlow = db.auraGlow.debuffFrames, db.frameGlow.debuffFrames
 
-	if db.auraGlow.debuffFrames.enabled then
-		if ADDON:TrackAuras(name, debuffType, spellId, db.auraGlow.debuffFrames.tracking) then
-			color = db.auraGlow.debuffFrames.useDefaultsColors and db.auraGlow.defaultColors[debuffType]
-			ADDON.StartGlow(debuffFrame, db.auraGlow.debuffFrames, color, "debuffFrames", "auraGlow")
-			debuffFrame.debuffFramesGlowing = debuffType
-		end
+	if auraGlow.enabled or frameGlow.enabled then
+		name = name and name:lower()
+		debuffType = debuffType and debuffType:lower() or "physical"
+		spellId = tostring(spellId)
 	end
 
-	if not debuffFrame.debuffFramesGlowing then
-		ADDON.StopGlow(debuffFrame, db.auraGlow.debuffFrames, "debuffFrames", "auraGlow")
+	if auraGlow.enabled and ADDON:TrackAuras(name, debuffType, spellId, auraGlow.tracking) then
+		ADDON.StartGlow(debuffFrame, auraGlow, auraGlow.useDefaultsColors and db.auraGlow.defaultColors[debuffType], "debuffFrames", "auraGlow")
+	else
+		ADDON.StopGlow(debuffFrame, auraGlow, "debuffFrames", "auraGlow")
 	end
 
-	local parent = debuffFrame:GetParent()
-	parent.debuffFramesGlowing[debuffType] = {name, debuffType, spellId}
-	parent.debuffFramesGlowing[name] = {name, debuffType, spellId}
-	parent.debuffFramesGlowing[spellId] = {name, debuffType, spellId}
+	if frameGlow.enabled then
+		debuffFrame:GetParent().debuffFramesGlowing[spellId] = {name, debuffType, spellId}
+	end
 
 	if ADDON.Masque and ADDON.db.profile.Masque then
 		debuffFrame.border:Hide()

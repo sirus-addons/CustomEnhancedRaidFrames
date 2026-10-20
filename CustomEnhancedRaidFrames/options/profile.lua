@@ -12,20 +12,6 @@ function ADDON:CreateProfileOptions()
 		name = L["Import/Export"],
 
 		args = {
-			sync = {
-				order = 1,
-				type = "toggle",
-				width = "full",
-				descStyle = "inline",
-				name = L["Sync Profiles"],
-				desc = L["Sync Profiles Desc"],
-				set = function(info, val)
-					PRIVATE.SyncProfiles = val
-				end,
-				get = function(info, val)
-					return PRIVATE.SyncProfiles
-				end,
-			},
 			export = {
 				order = 2,
 				type = "execute",
@@ -48,8 +34,9 @@ function ADDON:CreateProfileOptions()
 				name = L["Import Profile"],
 				desc = "",
 				set = function(info, val)
-					self:ImportCurrentProfile(val)
-					ReloadUI()
+					if self:ImportCurrentProfile(val) then
+						ReloadUI()
+					end
 				end,
 			},
 		},

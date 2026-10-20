@@ -9,12 +9,12 @@ local CompactUnitFrame_IsTapDenied = CompactUnitFrame_IsTapDenied
 local GetUnitName = GetUnitName
 local UnitExists = UnitExists
 
--- GLOBALS: CompactUnitFrame_UpdateName, DefaultCompactUnitFrameSetupOptions
+-- GLOBALS: CompactUnitFrame_UpdateName
 
 function ADDON.CompactUnitFrame_UpdateName(frame, groupType)
 	local db = ADDON.db.profile[groupType].nameAndIcons
 
-	if not db.name.enabled or not db.name.freeAnchor then
+	if (not db.name.enabled or not db.name.freeAnchor) and not ADDON.IsMiniFrame(frame) then
 		frame.name:ClearAllPoints()
 
 		if not db.roleGroupIcon.enabled then
@@ -52,7 +52,7 @@ function ADDON.Name_Setup(frame, groupType)
 	end
 
 	local flags = db.flag ~= "None" and db.flag or ""
-	local font = SharedMedia:Fetch("font", db.font) or SharedMedia:Fetch("font", ADDON.font)
+	local font = SharedMedia:Fetch("font", db.font)
 	local size = db.size * ADDON.ComponentScale(groupType)
 
 	frame.name:SetFont(font, size, flags)
@@ -90,7 +90,7 @@ function ADDON.Name_Update(frame, groupType)
 
 	if db.useClassColor then
 		local classColor = ADDON.ColorByClass(frame.unit)
-		frame.name:SetTextColor(classColor.r, classColor.g, classColor.b)
+		frame.name:SetVertexColor(classColor.r, classColor.g, classColor.b)
 	else
 		if CompactUnitFrame_IsTapDenied(frame) then
 			frame.name:SetVertexColor(0.5, 0.5, 0.5)
@@ -103,10 +103,11 @@ end
 local NATIVE_UNIT_FRAME_HEIGHT = 36;
 local NATIVE_UNIT_FRAME_WIDTH = 72;
 function ADDON.Name_Revert()
+	local width, height = ADDON.GetUnitFrameSize(ADDON.GetGroupType())
+	local componentScale = min(height / NATIVE_UNIT_FRAME_HEIGHT, width / NATIVE_UNIT_FRAME_WIDTH)
+
 	for frame in ADDON.IterateCompactFrames() do
 		if UnitExists(frame.unit) then
-			local options = DefaultCompactUnitFrameSetupOptions
-			local componentScale = min(options.height / NATIVE_UNIT_FRAME_HEIGHT, options.width / NATIVE_UNIT_FRAME_WIDTH)
 			local NAME_LINE_HEIGHT = min(10 * max(1.15, componentScale), 14)
 
 			local font, _, fontFlagsN = frame.name:GetFontObject():GetFont()

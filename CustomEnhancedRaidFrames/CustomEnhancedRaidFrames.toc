@@ -1,9 +1,8 @@
 ## Interface: 30300
 ## Title: Custom Enhanced Raid Frames
 ## Notes: |@Version: 8@|Extended Standart Raid\Party Frames
-## Version: 1.0
+## Version: 1.1
 ## SavedVariables: ERFDB
-## SavedVariablesPerCharacter: ERFCharDB
 
 libs\libs.xml
 locales\locales.xml

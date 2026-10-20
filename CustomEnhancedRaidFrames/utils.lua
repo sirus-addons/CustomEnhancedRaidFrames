@@ -10,7 +10,9 @@ local pairs = pairs
 local select = select
 local tostring = tostring
 local min = math.min
-local strfind, strformat, strgmatch, strgsub, strlower, strmatch, strsplit, strtrim = string.find, string.format, string.gmatch, string.gsub, string.lower, string.match, string.split, string.trim
+local tremove = table.remove
+local twipe = table.wipe
+local strfind, strformat, strgmatch, strgsub, strlower, strmatch, strtrim = string.find, string.format, string.gmatch, string.gsub, string.lower, string.match, string.trim
 
 local CreateFrame = CreateFrame
 local GetNumRaidMembers = GetNumRaidMembers
@@ -24,7 +26,7 @@ local UnitInVehicle = UnitInVehicle
 
 local RAID_CLASS_COLORS = RAID_CLASS_COLORS
 
--- GLOBALS: DefaultCompactUnitFrameSetupOptions, LibStub, UIParent
+-- GLOBALS: CompactUnitFrame_IsPvpFrame, DefaultCompactMiniFrameOptions, DefaultCompactUnitFrameSetupOptions, LibStub, UIParent
 
 local subFrameTypes = {"debuffFrames", "buffFrames", "dispelDebuffFrames"}
 
@@ -38,15 +40,6 @@ ADDON.debuffsColors = {
 	disease = {0.6, 0.4, 0.0, 1},
 	poison = {0.0, 0.6, 0.0, 1},
 	physical = {1, 1, 1, 1}
-}
-
-ADDON.textMirrors = {
-	["TOPLEFT"] = {"TOPRIGHT", "LEFT"},
-	["LEFT"] = {"RIGHT", "LEFT"},
-	["BOTTOMLEFT"] = {"BOTTOMRIGHT", "LEFT"},
-	["BOTTOMRIGHT"] = {"BOTTOMLEFT", "RIGHT"},
-	["RIGHT"] = {"LEFT", "RIGHT"},
-	["TOPRIGHT"] = {"BOTTOMLEFT", "RIGHT"},
 }
 
 ADDON.mirrorPositions = {
@@ -146,18 +139,6 @@ ADDON.rowsGrows = {
 	}
 }
 
-local UnitGetIncomingHeals = _G["UnitGetIncomingHeals"]
-local UnitGetTotalAbsorbs = _G["UnitGetTotalAbsorbs"]
-
-function ADDON.IsIncomingHealsNative()
---	return type(UnitGetIncomingHeals) == "function"
-	return false
-end
-
-function ADDON.IsAbsorbsNative()
-	return type(UnitGetTotalAbsorbs) == "function"
-end
-
 function ADDON.GetUnitRole(unit)
 	if UnitInVehicle(unit) and UnitHasVehicleUI(unit) then
 		return "VEHICLE"
@@ -173,17 +154,39 @@ function ADDON.GetUnitRole(unit)
 	end
 end
 
-function ADDON:SetUpSubFramesPositionsAndSize(frame, subFrameType, groupType, virtual)
+function ADDON.GetAuraFrames(frame, subFrameType)
+	local blizzardFrames = frame[subFrameType]
+	if not blizzardFrames then return end
+
+	local auraFrames = frame.ERFAuraFrames
+	if not auraFrames then
+		auraFrames = {}
+		frame.ERFAuraFrames = auraFrames
+	end
+
+	local typedFrames = auraFrames[subFrameType]
+	if not typedFrames then
+		typedFrames = {}
+		for i = 1, #blizzardFrames do
+			typedFrames[i] = blizzardFrames[i]
+		end
+		auraFrames[subFrameType] = typedFrames
+	end
+
+	return typedFrames
+end
+
+function ADDON:SetUpSubFramesPositionsAndSize(frame, subFrameType, groupType)
 	local frameNum = 1
 	local typedframe, anchor1, anchor2, relativeFrame, xOffset, yOffset
 	local db = self.db.profile[groupType][subFrameType]
 	local size = db.size * (subFrameType ~= "dispelDebuffFrames" and self.ComponentScale(groupType) or 1)
-	local typedframes = virtual and self.virtual.frames[subFrameType] or frame[subFrameType]
+	local typedframes = self.GetAuraFrames(frame, subFrameType)
 
 	while frameNum <= #typedframes do
 		if frameNum == 1 then
 			anchor1, relativeFrame, anchor2 = db.anchorPoint, frame, db.anchorPoint
-		elseif frameNum % (db.numInRow) == 1 then
+		elseif (frameNum - 1) % db.numInRow == 0 then
 			anchor1, relativeFrame, anchor2 = self.rowsPositions[db.rowsGrowDirection][1], typedframes[frameNum - db.numInRow], self.rowsPositions[db.rowsGrowDirection][2]
 		else
 			anchor1, relativeFrame, anchor2 = self.mirrorPositions[db.growDirection][1], typedframes[frameNum - 1], self.mirrorPositions[db.growDirection][2]
@@ -222,6 +225,12 @@ function ADDON.StartGlow(frame, db, color, key, gType)
 	local options = glowOptions.options
 	color = color or options.color
 
+	local glowing = ADDON.glowingFrames[gType][key][frame]
+	if glowing == color then return end
+	if glowing then
+		ADDON.StopGlow(frame, db, key, gType)
+	end
+
 	if glowType == "button" then
 		LCG.ButtonGlow_Start(frame, color, options.frequency)
 	elseif glowType == "pixel" then
@@ -234,22 +243,21 @@ function ADDON.StartGlow(frame, db, color, key, gType)
 end
 
 function ADDON.StopGlow(frame, db, key, gType)
-	if db.type == "button" then
-		LCG.ButtonGlow_Stop(frame, key or "")
-	elseif db.type == "pixel" then
-		LCG.PixelGlow_Stop(frame, key or "")
-	elseif db.type == "auto" then
-		LCG.AutoCastGlow_Stop(frame, key or "")
-	end
+	local glowing = ADDON.glowingFrames[gType][key]
+	if not glowing[frame] then return end
 
-	ADDON.glowingFrames[gType][key][frame] = nil
+	LCG.ButtonGlow_Stop(frame)
+	LCG.PixelGlow_Stop(frame, key)
+	LCG.AutoCastGlow_Stop(frame, key)
+
+	glowing[frame] = nil
 end
 
 function ADDON.MasqueSupport(frame)
 	if not ADDON.Masque then return end
 	local enabled = ADDON.db.profile.Masque
 
-	for _, typedframe in ipairs(frame.buffFrames) do
+	for _, typedframe in ipairs(ADDON.GetAuraFrames(frame, "buffFrames")) do
 		if enabled then
 			ADDON.Masque.buffFrames:AddButton(typedframe)
 		else
@@ -257,7 +265,7 @@ function ADDON.MasqueSupport(frame)
 		end
 	end
 
-	for _, typedframe in ipairs(frame.debuffFrames) do
+	for _, typedframe in ipairs(ADDON.GetAuraFrames(frame, "debuffFrames")) do
 		if enabled then
 			ADDON.Masque.debuffFrames:AddButton(typedframe)
 		else
@@ -285,8 +293,8 @@ function ADDON:Offsets(anchor, frame, groupType, force)
 	local displayPowerBar, powerBarUsedHeight
 
 	if not force then
-		if self.db.profile[groupType].frames.showResourceOnlyForHealers and self.displayPowerBar then
-			displayPowerBar = frame.unit and UnitGroupRolesAssigned(frame.unit) == "HEALER"
+		if self:ShowResourceOnlyForHealers(groupType) and self.displayPowerBar then
+			displayPowerBar = frame.unit and ADDON.GetUnitRole(frame.unit) == "HEALER"
 		else
 			displayPowerBar = self.displayPowerBar
 		end
@@ -322,6 +330,7 @@ end
 function ADDON:AddSubFrames(frame, groupType)
 	if not self.IsFrameOk(frame) then return end
 
+	local created
 	for subFrameType in self.IterateSubFrameTypes() do
 		local frameName, template
 		local db = self.db.profile[groupType][subFrameType]
@@ -337,20 +346,29 @@ function ADDON:AddSubFrames(frame, groupType)
 			frameName = frame:GetName().."DispelDebuff"
 		end
 
-		for i = #frame[subFrameType] + 1, db.num do
-			local typedFrame = _G[frameName..i] or CreateFrame("Button", frameName..i, frame, template)
+		local typedFrames = self.GetAuraFrames(frame, subFrameType)
+		for i = #typedFrames + 1, db.num do
+			local typedFrame = _G[frameName..i]
+			if not typedFrame then
+				typedFrame = CreateFrame("Button", frameName..i, frame, template)
+				tremove(frame[subFrameType])
+			end
+			typedFrames[i] = typedFrame
+			created = true
 
 			typedFrame:ClearAllPoints()
 			typedFrame:Hide()
 		end
 	end
+
+	return created
 end
 
 function ADDON.UpdateAllCompactFrames(func)
 	local groupType = ADDON.GetGroupType()
 	if type(func) == "function" then
 		for frame in ADDON.IterateCompactFrames(groupType) do
-			func(frame)
+			func(frame, groupType)
 		end
 
 		if ADDON.virtual.shown then
@@ -401,7 +419,7 @@ function ADDON:AdditionalAura(name, debuffType, spellId, unitCaster)
 	for _, auraData in ipairs(db) do
 		local aura = auraData[1]
 		if aura == name or aura == debuffType or aura == spellId then
-			local unit = auraData[2]
+			local unit = auraData[3] or auraData[2]
 			if not unit then
 				return true
 			elseif unit == unitCaster then
@@ -413,16 +431,15 @@ function ADDON:AdditionalAura(name, debuffType, spellId, unitCaster)
 	return false
 end
 
-function ADDON:SmartAnchoring(frame, groupType, virtual)
+function ADDON:SmartAnchoring(frame, groupType)
 	local db = self.db.profile[groupType].debuffFrames
-	local typedframes = virtual and self.virtual.frames.debuffFrames or frame.debuffFrames
+	local typedframes = self.GetAuraFrames(frame, "debuffFrames")
 	local frameNum = 1
 	local typedframe, anchor1, anchor2, relativeFrame, xOffset, yOffset
 
 	local size = db.size * self.ComponentScale(groupType)
 	local bigSize = size * 2
 	local rowStart = 1
-	local actualGroupType = ADDON.GetGroupType()
 
 	while frameNum <= #typedframes do
 		local rowLen = db.numInRow
@@ -449,7 +466,7 @@ function ADDON:SmartAnchoring(frame, groupType, virtual)
 			elseif index == 1 then
 				anchor1, relativeFrame, anchor2 = self.smartAnchoringRowsPositions[db.rowsGrowDirection][db.growDirection][1], typedframes[rowStart], self.smartAnchoringRowsPositions[db.rowsGrowDirection][db.growDirection][2]
 				rowStart = frameNum
-			elseif index % rowLen == 1 then
+			elseif index > rowLen then
 				if bigs > 0 and rowLen > bigs then
 					for j=1, rowLen - (bigs * 2) do
 						if frameNum > #typedframes then break end
@@ -470,7 +487,7 @@ function ADDON:SmartAnchoring(frame, groupType, virtual)
 			end
 
 			if frameNum == 1 then
-				xOffset, yOffset = self:Offsets(anchor1, frame, actualGroupType)
+				xOffset, yOffset = self:Offsets(anchor1, frame, groupType)
 				xOffset = xOffset + db.xOffset
 				yOffset = yOffset + db.yOffset
 			else
@@ -639,7 +656,8 @@ function ADDON.SanitizeStringsByUnit(str)
 	for value in strgmatch(str, "[^\n]+") do
 		local key = ADDON.SanitazeString(value)
 		if key then
-			t[index] = {strsplit("::", key)}
+			local aura, unit = strmatch(key, "^(.-)::(.+)$")
+			t[index] = {aura or key, unit}
 			index = index + 1
 		end
 	end
@@ -759,17 +777,30 @@ end
 
 function ADDON:ImportCurrentProfile(text)
 	local db = self:DecompressData(text)
-	if not db then return end
-
-	self.db:SetProfile(db.current_profile)
+	if type(db) ~= "table" then
+		if db then
+			self:Print(L["Couldn't unserialize the data"])
+		end
+		return
+	end
 
 	for k, v in pairs(db) do
 		self.db.profile[k] = v
 	end
+
+	return true
 end
 
 function ADDON.SkipFrame(frame)
-	return not frame or not frame:GetName() or frame.isNamePlate
+	return not frame or not frame:GetName() or frame.isNamePlate or (CompactUnitFrame_IsPvpFrame and CompactUnitFrame_IsPvpFrame(frame))
+end
+
+function ADDON.IsMiniFrame(frame)
+	return frame.optionTable == DefaultCompactMiniFrameOptions or (frame.unit and strfind(frame.unit, "pet", 1, true))
+end
+
+function ADDON:ShowResourceOnlyForHealers(groupType)
+	return self.db.profile[groupType].frames.showResourceOnlyForHealers or self.displayOnlyHealerPowerBars
 end
 
 function ADDON.IsFrameOk(frame)
@@ -797,16 +828,50 @@ function ADDON.ComponentScale(groupType)
 		return 1
 	end
 
-	local scale = min(
-		DefaultCompactUnitFrameSetupOptions.height / ADDON.NATIVE_UNIT_FRAME_HEIGHT,
-		DefaultCompactUnitFrameSetupOptions.width / ADDON.NATIVE_UNIT_FRAME_WIDTH
+	return ADDON.NativeComponentScale(groupType)
+end
+
+local componentScales = {}
+
+function ADDON.NativeComponentScale(groupType)
+	local scale = componentScales[groupType]
+	if scale then
+		return scale
+	end
+
+	local width, height = ADDON.GetUnitFrameSize(groupType)
+	scale = min(
+		height / ADDON.NATIVE_UNIT_FRAME_HEIGHT,
+		width / ADDON.NATIVE_UNIT_FRAME_WIDTH
 	)
 
-	return scale > 0 and scale or 1
+	if scale > 0 then
+		componentScales[groupType] = scale
+		return scale
+	end
+
+	return 1
+end
+
+function ADDON.ResetComponentScale()
+	twipe(componentScales)
+end
+
+function ADDON.GetUnitFrameSystemIndex(groupType)
+	return groupType == "party" and CompactRaidGroupTypeEnum.Party or CompactRaidGroupTypeEnum.Raid
+end
+
+function ADDON.GetUnitFrameSize(groupType)
+	local options = DefaultCompactUnitFrameSetupOptions
+	if options.width then
+		return options.width, options.height
+	end
+
+	local systemIndex = ADDON.GetUnitFrameSystemIndex(groupType)
+	return EditModeManagerFrame:GetRaidFrameWidth(systemIndex), EditModeManagerFrame:GetRaidFrameHeight(systemIndex)
 end
 
 function ADDON.GetGroupType()
---	return (GetDisplayedAllyFrames() == "raid" or GetNumRaidMembers() > 0) and "raid" or "party"
 	return (GetNumRaidMembers() > 0 or GetNumPartyMembers() == 0) and "raid" or "party"
 end
 

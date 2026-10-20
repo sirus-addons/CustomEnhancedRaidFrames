@@ -1,13 +1,14 @@
 local ADDON_NAME, PRIVATE = ...
 local ADDON = PRIVATE.ADDON
 
-ADDON.DEFAULT_FONT = "Friz Quadrata TT" or LibStub("LibSharedMedia-3.0").DefaultMedia.font
+ADDON.DEFAULT_FONT = "Friz Quadrata TT"
 
 local strformat = string.format
 
 local getGroupDefaults = function(groupType)
 	return {
 		frames = {
+			hidePlayer = false,
 			hideGroupTitles = false,
 			texture = "Blizzard Raid Bar",
 			clickThrough = false,
@@ -26,7 +27,7 @@ local getGroupDefaults = function(groupType)
 		dispelDebuffFrames = {
 			num = 3,
 			numInRow = 3,
-			rowsGrowDirection = "TOP",
+			rowsGrowDirection = "BOTTOM",
 			anchorPoint = "TOPRIGHT",
 			growDirection = "LEFT",
 			size = 12,
@@ -217,23 +218,13 @@ PRIVATE.DEFAULTS = {
 		saved_profiles = {
 			default = {
 				displayPowerBar = true,
-				frameHeight = ADDON.NATIVE_UNIT_FRAME_HEIGHT,
-				frameWidth = ADDON.NATIVE_UNIT_FRAME_WIDTH,
 				displayBorder = true,
-				keepGroupsTogether = false,
-				displayPets = true,
-				useCompactPartyFrames = true,
-				horizontalGroups = false,
-				displayMainTankAndAssist = false,
 			}
 		},
 
 		Masque = false,
 
 		healPrediction = {
-			absorbs = true,
-			absorbsEnhanced = false,
-
 			heal = true,
 			healThresholdSeconds = 3.0,
 			healMaxOverflowPercent = 1.05,

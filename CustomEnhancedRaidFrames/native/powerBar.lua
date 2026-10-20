@@ -1,18 +1,16 @@
 local ADDON_NAME, PRIVATE = ...
 local ADDON = PRIVATE.ADDON
 
-local strfind = string.find
-
 local UnitExists = UnitExists
 
 function ADDON.PowerBar_Setup(frame, groupType, refresh)
 	if not frame.unit or not frame.powerBar then return end
 	if not UnitExists(frame.displayedUnit) then return end
-	if strfind(frame.unit, "pet", 1, true) then return end
+	if ADDON.IsMiniFrame(frame) then return end
 
 	local db = ADDON.db.profile[groupType].frames
 
-	if not db.showResourceOnlyForHealers or not ADDON.displayPowerBar then
+	if not ADDON:ShowResourceOnlyForHealers(groupType) or not ADDON.displayPowerBar then
 		return
 	end
 
@@ -58,7 +56,7 @@ end
 function ADDON.PowerBar_Revert()
 	local groupType = ADDON.GetGroupType()
 
-	if not ADDON.db.profile[groupType].frames.showResourceOnlyForHealers or not ADDON.displayPowerBar then
+	if not ADDON:ShowResourceOnlyForHealers(groupType) or not ADDON.displayPowerBar then
 		for frame in ADDON.IterateCompactFrames() do
 			ADDON.PowerBar_RevertInternal(frame)
 		end
@@ -84,7 +82,7 @@ function ADDON.PowerBar_Revert()
 end
 
 function ADDON.PowerBar_RevertInternal(frame)
-	if frame.unit and strfind(frame.unit, "pet") then return end
+	if ADDON.IsMiniFrame(frame) then return end
 
 	local powerBarHeight = ADDON.GetGroupTypeDB().frames.powerBarHeight
 

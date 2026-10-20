@@ -2,8 +2,6 @@ local ADDON_NAME, PRIVATE = ...
 local ADDON = PRIVATE.ADDON
 local L = LibStub("AceLocale-3.0"):GetLocale(ADDON_NAME)
 
-local LCG = LibStub("LibCustomGlow-1.0")
-
 local pairs = pairs
 local strformat = string.format
 local twipe = table.wipe
@@ -85,6 +83,7 @@ function ADDON:CreateGlowOptions()
 						func = function(info, val)
 							self.db.profile.glows.glowBlockList.excludeStr = ""
 							twipe(self.db.profile.glows.glowBlockList.tracking)
+							self.UpdateAllCompactFrames(self.CompactUnitFrame_UpdateAuras)
 						end,
 					},
 				},
@@ -120,6 +119,7 @@ function ADDON:CreateGlowTypeOptions(glowType)
 			set = function(info, r, g, b, a)
 				local color = self.db.profile.glows[glowType].defaultColors[info[#info]]
 				color[1], color[2], color[3], color[4] = r, g, b, a
+				self.UpdateAllCompactFrames(self.CompactUnitFrame_UpdateAuras)
 			end,
 			get = function(info)
 				local color = self.db.profile.glows[glowType].defaultColors[info[#info]]
@@ -204,7 +204,6 @@ function ADDON:CreateGlowSubOptions(frameType, glowType)
 				self.UpdateAllCompactFrames(self.CompactUnitFrame_UpdateAuras)
 			end,
 			get = function(info)
-				self:HideVirtual()
 				return self.db.profile.glows[glowType][frameType].enabled
 			end
 		},
@@ -473,14 +472,9 @@ end
 function ADDON:GlowsRestartOptions(frameType, glowType)
 	local db = self.db.profile.glows[glowType][frameType]
 
-	for frame, color in pairs(self.glowingFrames[glowType][frameType]) do
-		LCG.ButtonGlow_Stop(frame, frameType or "")
-		LCG.PixelGlow_Stop(frame, frameType or "")
-		LCG.AutoCastGlow_Stop(frame, frameType or "")
-
-		self.glowingFrames[glowType][frameType][frame] = nil
-
-		color = db.useDefaultsColors and color or db.options[db.type].color
-		self.StartGlow(frame, db, color, frameType, glowType)
+	for frame in pairs(self.glowingFrames[glowType][frameType]) do
+		self.StopGlow(frame, db, frameType, glowType)
 	end
+
+	self.UpdateAllCompactFrames(self.CompactUnitFrame_UpdateAuras)
 end

@@ -21,7 +21,7 @@ local GetRaidProfileFlattenedOptions = GetRaidProfileFlattenedOptions
 local InCombatLockdown = InCombatLockdown
 local debugprofilestop = debugprofilestop
 
--- GLOBALS: CompactRaidFrameContainer, CompactRaidFrameManager, InterfaceOptionsFrame_OpenToCategory, LibStub, ERFCharDB
+-- GLOBALS: CompactRaidFrameContainer, CompactRaidFrameManager, InterfaceOptionsFrame_OpenToCategory, LibStub
 
 local Masque = LibStub("LibButtonFacade", true)
 LibStub("LibSharedMedia-3.0"):Register("statusbar", "Blizzard Raid PowerBar", "Interface\\RaidFrame\\Raid-Bar-Resource-Fill")
@@ -42,7 +42,11 @@ function ADDON:OnInitialize()
 	self:RegisterEvent("PLAYER_REGEN_ENABLED", "OnEvent")
 	self:RegisterEvent("PLAYER_ROLES_ASSIGNED", "OnEvent")
 
-	self:SecureHook("CompactRaidFrameContainer_LayoutFrames")
+	if CompactRaidFrameContainer_LayoutFrames then
+		self:SecureHook("CompactRaidFrameContainer_LayoutFrames")
+	else
+		self:SecureHook(CompactRaidFrameContainer, "LayoutFrames", "CompactRaidFrameContainer_LayoutFrames")
+	end
 	self:SecureHook("CompactUnitFrame_UpdateAll")
 	self:SecureHook("CompactUnitFrame_UpdateAuras", function(...)
 		ADDON.CompactUnitFrame_UpdateAuras(...)
@@ -53,7 +57,12 @@ function ADDON:OnInitialize()
 	-- custom interface display
 	self:SecureHook(self.dialog, "FeedGroup", function() self:CustomizeOptions() end)
 
-	self:SecureHook("CompactUnitFrameProfiles_ApplyProfile")
+	if CompactUnitFrameProfiles_ApplyProfile then
+		self:SecureHook("CompactUnitFrameProfiles_ApplyProfile")
+	else
+		self:SecureHook("DefaultCompactUnitFrameSetup", "OnUnitFrameSetUp")
+		self:SecureHook("DefaultCompactMiniFrameSetup", "OnUnitFrameSetUp")
+	end
 
 	self:RegisterChatCommand("erf", function(arg, ...)
 		if arg == "reload" or arg == "rl" or arg == "кд" then
@@ -69,6 +78,162 @@ function ADDON:OnInitialize()
 
 	self:SafeRefresh()
 	self:InitializeBars()
+	self:SetupHidePlayerFrame()
+end
+
+function ADDON:ShouldHidePlayerUnit(unit)
+	if not unit or not self.db or not UnitExists(unit) or not UnitIsUnit(unit, "player") then
+		return false
+	end
+	if GetNumRaidMembers() > 0 then
+		return self.db.profile.raid.frames.hidePlayer
+	elseif GetNumPartyMembers() > 0 then
+		return self.db.profile.party.frames.hidePlayer
+	end
+	return false
+end
+
+function ADDON:RemovePlayerFromGroup(frame)
+	local name = frame:GetName()
+	local frameIndex
+	for i = 1, MEMBERS_PER_RAID_GROUP do
+		local unit = _G[name.."Member"..i].unit
+		if frameIndex then
+			CompactUnitFrame_SetUnit(_G[name.."Member"..frameIndex], unit)
+			frameIndex = frameIndex + 1
+		elseif unit and UnitIsUnit(unit, "player") then
+			frameIndex = i
+		end
+	end
+	if not frameIndex then return end
+	self.playerHidden = true
+
+	for i = frameIndex, MEMBERS_PER_RAID_GROUP do
+		CompactUnitFrame_SetUnit(_G[name.."Member"..i], nil)
+	end
+	if frame.updateLayoutFunc then
+		frame:updateLayoutFunc()
+	end
+end
+
+function ADDON:RemovePlayerFromContainer(container)
+	if not self:ShouldHidePlayerUnit("player") then return end
+	if InCombatLockdown() then
+		self.hidePlayerPending = true
+		return
+	end
+
+	local removed
+	for i = #container.flowFrames, 1, -1 do
+		local frame = container.flowFrames[i]
+		local unit = type(frame) == "table" and frame.frameType ~= "raidFake" and frame.unit
+		if unit and (unit == "player" or unit:match("^raid%d+$")) and UnitIsUnit(unit, "player") then
+			FlowContainer_RemoveObject(container, frame)
+			CompactUnitFrame_SetUnit(frame, nil)
+			removed = true
+		end
+	end
+	if not removed then return end
+	self.playerHidden = true
+
+	if container.Layout then
+		container:SetSize(3000, 3000)
+		FlowContainer_DoLayout(container)
+		container:Layout()
+	else
+		FlowContainer_DoLayout(container)
+	end
+end
+
+function ADDON:AssignPartyUnits(frame)
+	local name = frame and frame:GetName()
+	if not name then return end
+	local inParty = GetNumRaidMembers() == 0
+	local hide = inParty and self.db.profile.party.frames.hidePlayer and GetNumPartyMembers() > 0
+	local restore = inParty and not hide and not frame.RefreshMembers and _G[name.."Member1"].unit ~= "player"
+	if not hide and not restore then return end
+	if InCombatLockdown() then
+		self.hidePlayerPending = true
+		return
+	end
+
+	if hide then
+		self:RemovePlayerFromGroup(frame)
+	else
+		CompactUnitFrame_SetUnit(_G[name.."Member1"], "player")
+		for i = 2, MEMBERS_PER_RAID_GROUP do
+			CompactUnitFrame_SetUnit(_G[name.."Member"..i], "party"..(i - 1))
+		end
+	end
+end
+
+function ADDON:ApplyHidePlayer()
+	if InCombatLockdown() then
+		self.hidePlayerPending = true
+		return
+	end
+	self.hidePlayerPending = nil
+
+	local inRaid = GetNumRaidMembers() > 0
+	local hide = self:ShouldHidePlayerUnit("player")
+	if not hide then
+		if not self.playerHidden then return end
+		self.playerHidden = nil
+	end
+
+	if inRaid then
+		for i = 1, 8 do
+			local group = _G["CompactRaidGroup"..i]
+			if group then
+				if hide then
+					self:RemovePlayerFromGroup(group)
+				else
+					CompactRaidGroup_UpdateUnits(group)
+				end
+			end
+		end
+	elseif CompactPartyFrame and GetNumPartyMembers() > 0 then
+		if CompactPartyFrame.RefreshMembers and not hide then
+			CompactPartyFrame:RefreshMembers()
+		else
+			self:AssignPartyUnits(CompactPartyFrame)
+		end
+	end
+
+	if hide then
+		self:RemovePlayerFromContainer(CompactRaidFrameContainer)
+	elseif inRaid or GetActiveRaidProfile and GetNumPartyMembers() > 0 then
+		CompactRaidFrameContainer_TryUpdate(CompactRaidFrameContainer)
+	end
+end
+
+function ADDON:SetupHidePlayerFrame()
+	hooksecurefunc("CompactRaidGroup_UpdateUnits", function(frame)
+		if frame == CompactPartyFrame then
+			ADDON:AssignPartyUnits(frame)
+		elseif GetNumRaidMembers() > 0 and ADDON:ShouldHidePlayerUnit("player") then
+			if InCombatLockdown() then
+				ADDON.hidePlayerPending = true
+			else
+				ADDON:RemovePlayerFromGroup(frame)
+			end
+		end
+	end)
+
+	if CompactPartyFrame_OnLoad then
+		hooksecurefunc("CompactPartyFrame_OnLoad", function(frame)
+			ADDON:AssignPartyUnits(frame)
+		end)
+	end
+
+	if CompactPartyFrame then
+		if CompactPartyFrame.RefreshMembers then
+			hooksecurefunc(CompactPartyFrame, "RefreshMembers", function(frame)
+				ADDON:AssignPartyUnits(frame)
+			end)
+		end
+		self:AssignPartyUnits(CompactPartyFrame)
+	end
 end
 
 function ADDON:SetupDB()
@@ -92,9 +257,9 @@ function ADDON:SetupDB()
 	self:SecureHookScript(self.dialog.general, "OnShow", "OnOptionShow")
 	self:SecureHookScript(self.dialog.general, "OnHide", "OnOptionHide")
 
-	self.db.RegisterCallback(self, "OnProfileChanged", function(...) self:SafeRefresh() end)
-	self.db.RegisterCallback(self, "OnProfileCopied", function(...) self:SafeRefresh() end)
-	self.db.RegisterCallback(self, "OnProfileReset", function(...) self:SafeRefresh() end)
+	self.db.RegisterCallback(self, "OnProfileChanged", "OnProfileUpdated")
+	self.db.RegisterCallback(self, "OnProfileCopied", "OnProfileUpdated")
+	self.db.RegisterCallback(self, "OnProfileReset", "OnProfileUpdated")
 
 	self:SetInternalVariables()
 end
@@ -102,20 +267,11 @@ end
 function ADDON:SetInternalVariables()
 	self:GetRaidProfileSettings()
 
-	self.maxFrames = 10
 	self.virtual = {
-		shown = false,
-		frames = {
-			buffFrames = {},
-			debuffFrames = {},
-			dispelDebuffFrames = {},
-		},
 		groupType = "raid",
 	}
 
-	self.aurasCache = {}
 	self.processedFrames = {}
-	self.healthFrameColors = {}
 
 	self.glowingFrames = {
 		auraGlow = {
@@ -156,11 +312,15 @@ function ADDON:OnEvent(event, ...)
 	local groupType = ADDON.GetGroupType()
 
 	if event == "PLAYER_REGEN_ENABLED" then
+		if self.hidePlayerPending then
+			self:ApplyHidePlayer()
+		end
 		for frame in self.IterateCompactFrames(groupType) do
-			if not InCombatLockdown() then
-				self:AddSubFrames(frame, groupType)
+			if self:AddSubFrames(frame, groupType) then
+				self.refreshQueue[frame] = "frame"
 			end
 		end
+		self:CoroutineUpdateFrames(groupType)
 
 		if self.deffered then
 			self:GetRaidProfileSettings()
@@ -178,7 +338,6 @@ function ADDON:RefreshProfileSettings()
 	local groupType = self.GetGroupType()
 
 	twipe(self.processedFrames)
-	twipe(self.healthFrameColors)
 
 	self.PowerBar_Revert()
 
@@ -188,7 +347,7 @@ function ADDON:RefreshProfileSettings()
 
 	if db.name.enabled and not self:IsHooked("CompactUnitFrame_UpdateName") then
 		self:SecureHook("CompactUnitFrame_UpdateName", function(frame)
-			if not frame then return end
+			if ADDON.SkipFrame(frame) then return end
 			self.CompactUnitFrame_UpdateName(frame, self.GetGroupType())
 		end)
 	elseif not db.name.enabled and self:IsHooked("CompactUnitFrame_UpdateName") then
@@ -197,7 +356,7 @@ function ADDON:RefreshProfileSettings()
 
 	if db.statusText.enabled and not self:IsHooked("CompactUnitFrame_UpdateStatusText") then
 		self:SecureHook("CompactUnitFrame_UpdateStatusText", function(frame)
-			if not frame then return end
+			if ADDON.SkipFrame(frame) then return end
 			self.CompactUnitFrame_UpdateStatusText(frame, self.GetGroupType())
 		end)
 	elseif not db.statusText.enabled and self:IsHooked("CompactUnitFrame_UpdateStatusText") then
@@ -206,7 +365,7 @@ function ADDON:RefreshProfileSettings()
 
 	if db.raidTargetIcon.enabled and not self:IsHooked("CompactUnitFrame_UpdateRaidTargetIcon") then
 		self:SecureHook("CompactUnitFrame_UpdateRaidTargetIcon", function(frame)
-			if not frame then return end
+			if ADDON.SkipFrame(frame) then return end
 			self.CompactUnitFrame_UpdateRaidTargetIcon(frame, self.GetGroupType())
 		end)
 	elseif not db.raidTargetIcon.enabled and self:IsHooked("CompactUnitFrame_UpdateRaidTargetIcon") then
@@ -215,36 +374,42 @@ function ADDON:RefreshProfileSettings()
 
 	if db.roleGroupIcon.enabled and not self:IsHooked("CompactUnitFrame_UpdateRoleGroupIcon") then
 		self:SecureHook("CompactUnitFrame_UpdateRoleGroupIcon", function(frame)
-			if not frame then return end
+			if ADDON.SkipFrame(frame) then return end
 			self.CompactUnitFrame_UpdateRoleGroupIcon(frame, self.GetGroupType())
 		end)
 	elseif not db.roleGroupIcon.enabled and self:IsHooked("CompactUnitFrame_UpdateRoleGroupIcon") then
 		self:Unhook("CompactUnitFrame_UpdateRoleGroupIcon")
 	end
 
-	if (db.roleIcon.enabled or self.db.profile[groupType].frames.showResourceOnlyForHealers) and not self:IsHooked("CompactUnitFrame_UpdateRoleIcon") then
+	local onlyHealerPowerBars = self:ShowResourceOnlyForHealers(groupType)
+	if (db.roleIcon.enabled or onlyHealerPowerBars) and not self:IsHooked("CompactUnitFrame_UpdateRoleIcon") then
 		self:SecureHook("CompactUnitFrame_UpdateRoleIcon", function(frame)
-			if not frame or not frame.unit then return end
+			if ADDON.SkipFrame(frame) or not frame.unit then return end
 			local groupType = self.GetGroupType()
 			self.RoleIcon_Update(frame, groupType)
 			self.PowerBar_Update(frame, groupType)
 		end)
-	elseif (not db.roleIcon.enabled and not self.db.profile[groupType].frames.showResourceOnlyForHealers) and self:IsHooked("CompactUnitFrame_UpdateRoleIcon") then
+	elseif (not db.roleIcon.enabled and not onlyHealerPowerBars) and self:IsHooked("CompactUnitFrame_UpdateRoleIcon") then
 		self:Unhook("CompactUnitFrame_UpdateRoleIcon")
 	end
 
 	if db.readyCheckIcon.enabled and not self:IsHooked("CompactUnitFrame_UpdateReadyCheck") then
 		self:SecureHook("CompactUnitFrame_UpdateReadyCheck", function(frame)
-			if not frame then return end
-			self:CompactUnitFrame_UpdateReadyCheck(frame, self.GetGroupType())
+			if ADDON.SkipFrame(frame) then return end
+			self.CompactUnitFrame_UpdateReadyCheck(frame, self.GetGroupType())
+		end)
+		self:SecureHook("CompactUnitFrame_FinishReadyCheck", function(frame)
+			if ADDON.SkipFrame(frame) then return end
+			self.ReadyCheckIcon_Finish(frame, self.GetGroupType())
 		end)
 	elseif not db.readyCheckIcon.enabled and self:IsHooked("CompactUnitFrame_UpdateReadyCheck") then
 		self:Unhook("CompactUnitFrame_UpdateReadyCheck")
+		self:Unhook("CompactUnitFrame_FinishReadyCheck")
 	end
 
 	if db.centerStatusIcon.enabled and not self:IsHooked("CompactUnitFrame_UpdateCenterStatusIcon") then
 		self:SecureHook("CompactUnitFrame_UpdateCenterStatusIcon", function(frame)
-			if not frame then return end
+			if ADDON.SkipFrame(frame) then return end
 			self.CompactUnitFrame_UpdateCenterStatusIcon(frame, self.GetGroupType())
 		end)
 	elseif not db.centerStatusIcon.enabled and self:IsHooked("CompactUnitFrame_UpdateCenterStatusIcon") then
@@ -253,7 +418,7 @@ function ADDON:RefreshProfileSettings()
 
 	if self.db.profile[self.currentGroup].frames.colorEnabled and not self:IsHooked("CompactUnitFrame_UpdateHealthColor") then
 		self:SecureHook("CompactUnitFrame_UpdateHealthColor", function(frame)
-			if not frame then return end
+			if ADDON.SkipFrame(frame) then return end
 			self.CompactUnitFrame_UpdateHealthColor(frame, self.GetGroupType())
 		end)
 	elseif not self.db.profile[self.currentGroup].frames.colorEnabled and self:IsHooked("CompactUnitFrame_UpdateHealthColor") then
@@ -273,10 +438,6 @@ end
 -- Profiles
 function ADDON:CompactUnitFrameProfiles_ApplyProfile(profile)
 	self:GetRaidProfileSettings(profile)
-
-	if profile and (self.db:GetCurrentProfile() ~= profile) then
-		self.SyncProfiles(profile)
-	end
 
 	if self.Masque then
 		self.Masque.buffFrames = self.Masque.buffFrames or Masque:Group(ADDON.TITLE, "Buff Auras")
@@ -300,16 +461,38 @@ end
 function ADDON.ReloadSetting()
 	ADDON:RefreshProfileSettings()
 	ADDON:SafeRefresh()
-	ADDON.reloadSettingsCooldown = nil
+end
+
+function ADDON:OnProfileUpdated()
+	self.ReloadSetting()
+	self:ApplyHidePlayer()
+end
+
+function ADDON:OnUnitFrameSetUp(frame)
+	self:GetRaidProfileSettings()
+
+	local name = frame:GetName()
+	if name then
+		self.processedFrames[name] = nil
+	end
 end
 
 function ADDON:GetRaidProfileSettings(profile)
+	self.ResetComponentScale()
+
+	if not GetActiveRaidProfile then
+		self.displayBorder = EditModeManagerFrame:ShouldRaidFrameDisplayBorder(self.GetUnitFrameSystemIndex(self.GetGroupType()))
+		self.displayPowerBar = DefaultCompactUnitFrameSetupOptions.displayPowerBar
+		self.displayOnlyHealerPowerBars = DefaultCompactUnitFrameSetupOptions.displayOnlyHealerPowerBars
+		self.useClassColors = DefaultCompactUnitFrameOptions.useClassColors
+		return
+	end
+
 	local settings
 
 	if InCombatLockdown() then
 		profile = profile or self.db.profile.current_profile
 		settings = self.db.profile.saved_profiles[profile] or self.db.profile.saved_profiles.default
-		self.useCompactPartyFrames = true
 		self.deffered = true
 	else
 		profile = profile or GetActiveRaidProfile()
@@ -318,56 +501,32 @@ function ADDON:GetRaidProfileSettings(profile)
 		if not settings then
 			settings = self.db.profile.saved_profiles[profile] or self.db.profile.saved_profiles.default
 		end
-
-		self.useCompactPartyFrames = true
 	end
 
-	self.horizontalGroups = settings.horizontalGroups
-	self.displayMainTankAndAssist = settings.displayMainTankAndAssist
-	self.keepGroupsTogether = settings.keepGroupsTogether
 	self.displayBorder = settings.displayBorder
 	self.displayPowerBar = settings.displayPowerBar
-	self.displayPets = settings.displayPets
 	self.useClassColors = settings.useClassColors
-	self.healthText = settings.healthText
 
 	local savedProfile = {}
-	savedProfile.horizontalGroups = settings.horizontalGroups
-	savedProfile.displayMainTankAndAssist = settings.displayMainTankAndAssist
-	savedProfile.keepGroupsTogether = settings.keepGroupsTogether
 	savedProfile.displayBorder = settings.displayBorder
 	savedProfile.displayPowerBar = settings.displayPowerBar
-	savedProfile.displayPets = settings.displayPets
-	savedProfile.useCompactPartyFrames = self.useCompactPartyFrames
 	savedProfile.useClassColors = settings.useClassColors
 
 	self.db.profile.current_profile = profile
 	self.db.profile.saved_profiles[profile] = savedProfile
 end
 
-function ADDON.SyncProfiles(profile)
-	if ERFCharDB then
-		local dbProfiles = ADDON.db:GetProfiles()
-
-		for _, v in ipairs(dbProfiles) do
-			if profile == v then
-				ADDON.db:SetProfile(profile)
-
-				ADDON:CustomizeOptions()
-			end
-		end
-	end
-end
-
 -- Config
 function ADDON:ConfigOptionsOpen()
-	local index = ERFCharDB and 3 or 2
-	local tabsP = self.dialog.general.obj.children
-	and self.dialog.general.obj.children[index]
+	local tabsP = self.dialog.general.obj.children and self.dialog.general.obj.children[2]
 
-	tabsP:SelectTab(ADDON.GetGroupType())
+	if tabsP then
+		tabsP:SelectTab(ADDON.GetGroupType())
+	end
 
-	C_Timer:NewTicker(5, function() self:CustomizeOptions() end)
+	if not self.optionsTicker then
+		self.optionsTicker = C_Timer:NewTicker(5, function() self:CustomizeOptions() end)
+	end
 end
 
 function ADDON:OnOptionShow()
@@ -378,18 +537,22 @@ end
 
 function ADDON:OnOptionHide()
 	self.isOptionsShown = nil
+	if self.optionsTicker then
+		self.optionsTicker:Cancel()
+		self.optionsTicker = nil
+	end
 	self:HideRaidFrame()
 end
 
 function ADDON:ShowRaidFrame()
-	if not InCombatLockdown() and not GetDisplayedAllyFrames() and self.useCompactPartyFrames then
+	if GetDisplayedAllyFrames and not InCombatLockdown() and not GetDisplayedAllyFrames() then
 		CompactRaidFrameContainer:Show()
 		CompactRaidFrameManager:Show()
 	end
 end
 
 function ADDON:HideRaidFrame()
-	if not InCombatLockdown() and not GetDisplayedAllyFrames() and self.useCompactPartyFrames then
+	if GetDisplayedAllyFrames and not InCombatLockdown() and not GetDisplayedAllyFrames() then
 		CompactRaidFrameContainer:Hide()
 		CompactRaidFrameManager:Hide()
 	end
@@ -407,22 +570,14 @@ function ADDON:CustomizeOptions()
 		virtualFramesButton:SetPoint("TOPRIGHT", self.dialog.general.obj.label:GetParent(), "TOPRIGHT", -10, -15)
 	end
 
-	local index = ERFCharDB and 3 or 2
 	local groupTypelabel = self.dialog.general.obj.children
-		and self.dialog.general.obj.children[index]
-		and self.dialog.general.obj.children[index].children
-		and self.dialog.general.obj.children[index].children[1]
-		and self.dialog.general.obj.children[index].children[1].label
+		and self.dialog.general.obj.children[2]
+		and self.dialog.general.obj.children[2].children
+		and self.dialog.general.obj.children[2].children[1]
+		and self.dialog.general.obj.children[2].children[1].label
 
 	if groupTypelabel then
 		groupTypelabel:SetText(L["You are in |cFFC80000<text>|r"]:gsub("<text>", ADDON.GetGroupType() == "raid" and L["Raid_decl2"] or L["Party_decl2"]))
-	end
-
-	if ERFCharDB then
-		local profileLabel = self.dialog.general.obj.children and self.dialog.general.obj.children[2] and self.dialog.general.obj.children[2].label
-		if profileLabel then
-			profileLabel:SetText(L["Profile: |cFFC80000<text>|r"]:gsub("<text>", self.db:GetCurrentProfile()))
-		end
 	end
 end
 
@@ -477,7 +632,7 @@ function ADDON.RefrashCoroutine(groupType, isInCombatLockdown)
 		end
 
 		if (debugprofilestop() - ADDON.COROUTINE_TIMESTAMP) > ADDON.FRAMETIME_AVAILABLE then
-			coroutine.yield()
+			groupType, isInCombatLockdown = coroutine.yield()
 		end
 
 		frame, fType = next(ADDON.refreshQueue)
@@ -486,8 +641,6 @@ end
 
 function ADDON:RefreshConfig(virtualGroupType)
 	local groupType = self.GetGroupType()
-
-	twipe(self.healthFrameColors)
 
 	if self.virtual.shown then
 		self:ShowVirtual(virtualGroupType)
@@ -557,7 +710,7 @@ function ADDON:RestoreDefaults(groupType, frameType, subType)
 		end
 	end
 
-	self:SafeRefresh(groupType)
+	self.ReloadSetting()
 end
 
 function ADDON:CopySettings(dbFrom, dbTo)
@@ -568,11 +721,11 @@ function ADDON:CopySettings(dbFrom, dbTo)
 
 	for k, v in pairs(dbFrom) do
 		if dbTo[k] ~= nil then
-			dbTo[k] = v
+			dbTo[k] = type(v) == "table" and CopyTable(v) or v
 		end
 	end
 
-	self:SafeRefresh(ADDON.GetGroupType())
+	self.ReloadSetting()
 end
 
 function ADDON:RestoreDefaultsByTable(groupType, frameType, subType, vars)
@@ -587,7 +740,7 @@ function ADDON:RestoreDefaultsByTable(groupType, frameType, subType, vars)
 		self.db.profile[groupType][frameType][v] = defaults_settings[v]
 	end
 
-	self:SafeRefresh(groupType)
+	self.ReloadSetting()
 end
 
 function ADDON:CopySettingsByTable(dbFrom, dbTo, vars)
@@ -598,9 +751,9 @@ function ADDON:CopySettingsByTable(dbFrom, dbTo, vars)
 
 	for _, v in ipairs(vars) do
 		if dbFrom[v] ~= nil then
-			dbTo[v] = dbFrom[v]
+			dbTo[v] = type(dbFrom[v]) == "table" and CopyTable(dbFrom[v]) or dbFrom[v]
 		end
 	end
 
-	self:SafeRefresh(ADDON.GetGroupType())
+	self.ReloadSetting()
 end

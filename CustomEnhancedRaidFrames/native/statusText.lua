@@ -17,7 +17,7 @@ local DEAD = DEAD
 local PLAYER_OFFLINE = PLAYER_OFFLINE
 local UNKNOWN = UNKNOWN
 
--- GLOBALS: CompactUnitFrame_IsTapDenied, DefaultCompactUnitFrameSetupOptions
+-- GLOBALS: CompactUnitFrame_IsTapDenied, CompactUnitFrame_UpdateStatusText
 
 function ADDON.CompactUnitFrame_UpdateStatusText(frame, groupType)
 	if not frame.unit or not frame.statusText or not frame.statusTextERF then return end
@@ -40,6 +40,7 @@ function ADDON.CompactUnitFrame_UpdateStatusText(frame, groupType)
 
 	if hide or (isStatus and db.hideStatusText) then
 		frame.statusTextERF:Hide()
+		frame.statusText:Hide()
 		return
 	else
 		frame.statusText:Hide()
@@ -72,7 +73,7 @@ function ADDON.CompactUnitFrame_UpdateStatusText(frame, groupType)
 			local classColor = ADDON.ColorByClass(frame.unit)
 
 			if classColor then
-				frame.statusTextERF:SetTextColor(classColor.r, classColor.g, classColor.b)
+				frame.statusTextERF:SetVertexColor(classColor.r, classColor.g, classColor.b)
 			end
 		else
 			if CompactUnitFrame_IsTapDenied(frame) then
@@ -99,7 +100,7 @@ function ADDON.StatusText_Setup(frame, groupType)
 
 	local xOffset, yOffset = ADDON:Offsets("BOTTOM", frame, groupType, true)
 	xOffset = xOffset + db.xOffset
-	yOffset = yOffset + db.yOffset + (((DefaultCompactUnitFrameSetupOptions.height or ADDON.NATIVE_UNIT_FRAME_HEIGHT) / 3) - 2)
+	yOffset = yOffset + db.yOffset + ((select(2, ADDON.GetUnitFrameSize(groupType)) / 3) - 2)
 
 	frame.statusTextERF:ClearAllPoints()
 	frame.statusTextERF:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", xOffset, yOffset)
@@ -107,7 +108,7 @@ function ADDON.StatusText_Setup(frame, groupType)
 
 	local size = db.size * ADDON.ComponentScale(groupType)
 	local flags = db.flag ~= "None" and db.flag or ""
-	local font = SharedMedia:Fetch("font", db.font) or SharedMedia:Fetch("font", ADDON.font)
+	local font = SharedMedia:Fetch("font", db.font)
 
 	frame.statusTextERF:SetFont(font, size, flags)
 	frame.statusTextERF:SetShadowColor(0, 0, 0, 1)
@@ -163,6 +164,8 @@ function ADDON.StatusText_Revert()
 		if frame.statusTextERF then
 			frame.statusTextERF:Hide()
 		end
-		frame.statusText:SetShown(not ADDON.StatusText_GetStatusInfo(frame))
+		if frame.unit then
+			CompactUnitFrame_UpdateStatusText(frame)
+		end
 	end
 end

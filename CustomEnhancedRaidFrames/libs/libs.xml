@@ -5,7 +5,6 @@
 
 	<Include file="AceAddon-3.0\AceAddon-3.0.xml"/>
 	<Include file="AceEvent-3.0\AceEvent-3.0.xml"/>
-	<Include file="AceTimer-3.0\AceTimer-3.0.xml"/>
 	<Include file="AceHook-3.0\AceHook-3.0.xml"/>
 	<Include file="AceDB-3.0\AceDB-3.0.xml"/>
 	<Include file="AceDBOptions-3.0\AceDBOptions-3.0.xml"/>
@@ -13,7 +12,6 @@
 	<Include file="AceConsole-3.0\AceConsole-3.0.xml"/>
 	<Include file="AceGUI-3.0\AceGUI-3.0.xml"/>
 	<Include file="AceConfig-3.0\AceConfig-3.0.xml"/>
-	<Include file="AceComm-3.0\AceComm-3.0.xml"/>
 	<Include file="AceSerializer-3.0\AceSerializer-3.0.xml"/>
 
 	<Include file="AceGUI-3.0-SharedMediaWidgets\widget.xml"/>
@@ -23,5 +21,4 @@
 	<Script file="LibDeflate\LibDeflate.lua"/>
 	<Script file="LibButtonFacade\LibButtonFacade.lua"/>
 	<Include file="LibHealComm-4.0\LibHealComm-4.0.xml"/>
-	<Script file="SpecializedAbsorbs-1.0\SpecializedAbsorbs-1.0.lua"/>
 </Ui>

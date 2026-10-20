@@ -102,10 +102,6 @@ function ADDON:SetupOptions()
 				name = L["Heal Prediction"],
 				desc = L["Heal Prediction settings"],
 
-				hidden = function()
-					return ADDON.IsIncomingHealsNative() and ADDON.IsAbsorbsNative()
-				end,
-
 				set = function(info, val)
 					self.db.profile.healPrediction[info[#info]] = val
 					ADDON.HealPredictionUpdateAll()
@@ -122,25 +118,9 @@ function ADDON:SetupOptions()
 						name = L["Enable Incoming Heal"],
 						desc = "",
 						disabled = false,
-						hidden = ADDON.IsIncomingHealsNative(),
 						set = function(info, val)
 							self.db.profile.healPrediction[info[#info]] = val
 							ADDON:ToggleHealComm(val)
-							ADDON.HealPredictionUpdateAll()
-						end,
-					},
-
-					absorbs = {
-						order = 2,
-						type = "toggle",
-						width = 1.2,
-						name = L["Enable Absorbs"],
-						desc = "",
-						disabled = false,
-						hidden = ADDON.IsAbsorbsNative(),
-						set = function(info, val)
-							self.db.profile.healPrediction[info[#info]] = val
-							ADDON:ToggleLibAbsorb(val)
 							ADDON.HealPredictionUpdateAll()
 						end,
 					},
@@ -190,14 +170,6 @@ function ADDON:SetupOptions()
 					self:VirtualFramesToggle()
 				end,
 			},
-			profileName = {
-				order = 200,
-				type = "header",
-				name = L["Profile: |cFFC80000<text>|r"],
-				hidden = function()
-					return not PRIVATE.SyncProfiles
-				end,
-			},
 		}
 	}
 end
@@ -224,6 +196,20 @@ function ADDON:CreateGenericOptionsByType(groupType)
 			name = L["General"],
 			desc = L["General options"],
 			args = {
+				hidePlayer = {
+					order = 0.5,
+					type = "toggle",
+					name = L["Hide Player Frame"],
+					desc = L["Hide Player Frame Desc"],
+					width = 1.5,
+					set = function(info, val)
+						self.db.profile[groupType].frames.hidePlayer = val
+						self:ApplyHidePlayer()
+					end,
+					get = function(info)
+						return self.db.profile[groupType].frames.hidePlayer
+					end
+				},
 				hideGroupTitles = {
 					order = 1,
 					type = "toggle",
@@ -415,13 +401,7 @@ function ADDON:CreateNameIconOptions(groupType)
 					desc = "",
 					set = function(info, val)
 						self.db.profile[groupType].nameAndIcons.name.enabled = val
-
-						if val then
-							self:RefreshProfileSettings(true)
-							self:SafeRefresh(groupType)
-						else
-							self.Name_Revert()
-						end
+						self.ReloadSetting()
 					end,
 					get = function(info)
 						return self.db.profile[groupType].nameAndIcons.name.enabled
@@ -819,7 +799,7 @@ function ADDON:CreateNameIconOptions(groupType)
 						self.db.profile[groupType].nameAndIcons.statusText.useClassColor = val
 
 						if not val then
-							self.Name_Revert()
+							self.StatusText_Revert()
 						end
 
 						self:SafeRefresh(groupType)
@@ -1583,14 +1563,9 @@ function ADDON:CreateNameIconOptions(groupType)
 					desc = "",
 					set = function(info, val)
 						self.db.profile[groupType].nameAndIcons.raidTargetIcon[info[#info]] = val
-						if not val then
-							self.RaidTargetIcon_Revert()
-							self:RefreshProfileSettings(true)
-						end
-						self:SafeRefresh(groupType)
+						self.ReloadSetting()
 					end,
 					get = function(info)
-						x = info
 						return self.db.profile[groupType].nameAndIcons.raidTargetIcon[info[#info]]
 					end
 				},
@@ -1733,7 +1708,7 @@ function ADDON:CreateNameIconOptions(groupType)
 					name = L["Reset to Default"],
 					desc = "",
 					func = function(info, val)
-						self:RestoreDefaults(groupType, "raidTargetIcon")
+						self:RestoreDefaults(groupType, "nameAndIcons", "raidTargetIcon")
 					end,
 				},
 			},
@@ -1753,11 +1728,7 @@ function ADDON:CreateNameIconOptions(groupType)
 					desc = "",
 					set = function(info, val)
 						self.db.profile[groupType].nameAndIcons.roleGroupIcon[info[#info]] = val
-						if not val then
-							self.RoleGroupIcon_Revert()
-							self:RefreshProfileSettings(true)
-						end
-						self:SafeRefresh(groupType)
+						self.ReloadSetting()
 					end,
 					get = function(info)
 						return self.db.profile[groupType].nameAndIcons.roleGroupIcon[info[#info]]
@@ -2332,12 +2303,7 @@ function ADDON:CreateTexturesFrameOptions(groupType)
 					desc = "",
 					set = function(info, val)
 						self.db.profile[groupType].frames.colorEnabled = val
-
-						if not val then
-							self.HealthBar_Revert()
-						end
-
-						self:SafeRefresh(groupType)
+						self.ReloadSetting()
 					end,
 					get = function(info)
 						return self.db.profile[groupType].frames.colorEnabled
@@ -2430,11 +2396,12 @@ function ADDON:CreateTexturesFrameOptions(groupType)
 					desc = L["Copy settings to |cFFffd100<text>|r"]:gsub("<text>", groupType == "party" and L["Raid_decl"] or L["Party_decl"]),
 					func = function(info, val)
 						local vars = {
-							"alphaPowerBar",
-							"alphaHealth",
-							"advancedTransparency",
-							"backgoundAlpha",
+							"texture",
+							"colorEnabled",
+							"color",
+							"backgroundColor",
 							"alpha",
+							"backgoundAlpha",
 						}
 
 						self:CopySettingsByTable(
@@ -2453,10 +2420,12 @@ function ADDON:CreateTexturesFrameOptions(groupType)
 					desc = "",
 					func = function(info, val)
 						local vars = {
-							"backgroundColor",
-							"color",
-							"colorEnabled",
 							"texture",
+							"colorEnabled",
+							"color",
+							"backgroundColor",
+							"alpha",
+							"backgoundAlpha",
 						}
 						self:RestoreDefaultsByTable(groupType, "frames", nil, vars)
 					end,
@@ -2521,7 +2490,7 @@ function ADDON:CreateTexturesFrameOptions(groupType)
 					set = function(info, val)
 						if val and not self.displayPowerBar then val = false end
 						self.db.profile[groupType].frames.showResourceOnlyForHealers = val
-						self.PowerBar_Revert()
+						self.ReloadSetting()
 					end,
 					get = function(info)
 						return self.db.profile[groupType].frames.showResourceOnlyForHealers
@@ -2541,11 +2510,9 @@ function ADDON:CreateTexturesFrameOptions(groupType)
 					desc = L["Copy settings to |cFFffd100<text>|r"]:gsub("<text>", groupType == "party" and L["Raid_decl"] or L["Party_decl"]),
 					func = function(info, val)
 						local vars = {
-							"alphaPowerBar",
-							"alphaHealth",
-							"advancedTransparency",
-							"backgoundAlpha",
-							"alpha",
+							"powerBarTexture",
+							"powerBarHeight",
+							"showResourceOnlyForHealers",
 						}
 
 						self:CopySettingsByTable(
